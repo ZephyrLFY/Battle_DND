@@ -167,22 +167,28 @@ export interface ActionOption {
 }
 
 /**
- * 当前行动方的全部动作选项（含不可用的），供 UI 灰显。
- * 普攻总可用；技能按法术位消耗判断。被眩晕时全部不可用。
+ * 某一方的全部动作选项（含不可用的），供 UI 灰显。
+ * 默认是当前行动方；传 `side` 可固定看某一方（如战斗面板始终显示玩家 a 方，
+ * 避免敌方回合时面板布局变化导致 UI 横跳）。
+ * 普攻总可用；技能按法术位消耗判断。被眩晕或非该方回合时不可用。
  */
-export function allActions(state: BattleState): ActionOption[] {
+export function allActions(state: BattleState, side?: Side): ActionOption[] {
   if (state.winner !== undefined) return [];
-  const f = state[state.turn];
+  const who = side ?? state.turn;
+  const f = state[who];
+  const notMyTurn = who !== state.turn;
   const stunned = f.stunned > 0;
+  const blocked = notMyTurn || stunned;
+  const blockReason = notMyTurn ? '等待回合' : stunned ? '昏迷中' : undefined;
 
   const opts: ActionOption[] = [
-    { action: { kind: 'attack' }, usable: !stunned, reason: stunned ? '昏迷中' : undefined },
+    { action: { kind: 'attack' }, usable: !blocked, reason: blockReason },
   ];
   for (const s of f.skills) {
     const cost = skillDef(s).cost;
     const enough = f.slots >= cost;
-    const usable = !stunned && enough;
-    const reason = stunned ? '昏迷中' : !enough ? '无法术位' : undefined;
+    const usable = !blocked && enough;
+    const reason = blockReason ?? (!enough ? '无法术位' : undefined);
     opts.push({ action: { kind: 'skill', skill: s }, usable, reason });
   }
   return opts;

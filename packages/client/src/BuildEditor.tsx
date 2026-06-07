@@ -7,6 +7,7 @@ import {
   ABILITY_KEYS,
   ABILITY_LABEL,
   SKILLS,
+  MAX_EQUIPPED_SKILLS,
   newPokemon,
   statsOf,
   allocate,
@@ -14,8 +15,12 @@ import {
   availablePoints,
   learnableSkills,
   learnSkill,
+  forgetSkill,
+  canLearn,
+  learnBlockReason,
   type PokemonInstance,
   type AbilityKey,
+  type SkillId,
 } from '@battle-pokemon/shared';
 
 export function BuildEditor({
@@ -88,30 +93,42 @@ export function BuildEditor({
       </div>
 
       <div className="skills">
-        <div className="skills-title">已学技能（{poke.skills.length}）</div>
-        {poke.skills.length === 0 && <div className="hint">还没学技能</div>}
+        <div className="skills-title">
+          已学技能（{poke.skills.length} / {MAX_EQUIPPED_SKILLS}）
+          {poke.skills.length >= MAX_EQUIPPED_SKILLS && <span className="bar-full"> 技能栏已满</span>}
+        </div>
+        {poke.skills.length === 0 && <div className="hint">还没学技能（点下方学习）</div>}
         <div className="skill-list">
           {poke.skills.map((id) => (
             <div key={id} className="skill-card learned">
               <SkillHeader id={id} />
               <div className="skill-desc">{SKILLS[id].desc}</div>
+              <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
+                卸下
+              </button>
             </div>
           ))}
         </div>
         {learnable.length > 0 && (
           <>
-            <div className="skills-title">可学（点击学习）</div>
+            <div className="skills-title">技能池（按解锁等级排序）</div>
             <div className="skill-list">
-              {learnable.map((id) => (
-                <button
-                  key={id}
-                  className="skill-card learn"
-                  onClick={() => onChange(learnSkill(poke, id))}
-                >
-                  <SkillHeader id={id} prefix="＋ " />
-                  <div className="skill-desc">{SKILLS[id].desc}</div>
-                </button>
-              ))}
+              {learnable.map((id) => {
+                const ok = canLearn(poke, id);
+                const reason = learnBlockReason(poke, id);
+                return (
+                  <button
+                    key={id}
+                    className={`skill-card learn ${ok ? '' : 'locked'}`}
+                    onClick={() => ok && onChange(learnSkill(poke, id))}
+                    disabled={!ok}
+                  >
+                    <SkillHeader id={id} prefix={ok ? '＋ ' : '🔒 '} />
+                    <div className="skill-desc">{SKILLS[id].desc}</div>
+                    {!ok && reason && <div className="lock-reason">{reason}</div>}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
@@ -120,17 +137,25 @@ export function BuildEditor({
   );
 }
 
-/** 技能名 + 消耗徽章（法术位 / 戏法）。 */
-function SkillHeader({ id, prefix = '' }: { id: keyof typeof SKILLS; prefix?: string }) {
+const COST_LABEL: Record<number, string> = {
+  0: '戏法·免费',
+  1: '🔮 ×1',
+  2: '🔮 ×2',
+  3: '🔮 ×3',
+};
+
+/** 技能名 + 消耗徽章 + 解锁等级。 */
+function SkillHeader({ id, prefix = '' }: { id: SkillId; prefix?: string }) {
   const def = SKILLS[id];
   return (
     <div className="skill-head">
       <span className="skill-name">
         {prefix}
         {def.name}
+        {def.unlockLevel > 1 && <small className="unlock"> Lv{def.unlockLevel}</small>}
       </span>
-      <span className={`cost-badge ${def.cost === 1 ? 'spell' : 'cantrip'}`}>
-        {def.cost === 1 ? '🔮 法术位' : '戏法·免费'}
+      <span className={`cost-badge ${def.cost === 0 ? 'cantrip' : 'spell'}`}>
+        {COST_LABEL[def.cost]}
       </span>
     </div>
   );

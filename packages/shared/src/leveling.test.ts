@@ -8,6 +8,10 @@ import {
   respec,
   learnableSkills,
   learnSkill,
+  forgetSkill,
+  canLearn,
+  learnBlockReason,
+  skillBarFull,
   gainExp,
   hasPendingGrowth,
 } from './leveling.js';
@@ -54,31 +58,67 @@ describe('allocate — 加点', () => {
 
 describe('respec — 洗点', () => {
   it('属性回到天赋、点全退回、等级技能不变', () => {
-    let p = learnSkill({ ...newPokemon('Pikachu'), level: 6 }, 'flurry');
+    let p = learnSkill({ ...newPokemon('Pikachu'), level: 8 }, 'flurry'); // flurry 需 Lv8
     p = allocate(p, 'str', 4);
     expect(spentPoints(p)).toBe(4);
     const r = respec(p);
     expect(spentPoints(r)).toBe(0);
     expect(r.abilities).toEqual(newPokemon('Pikachu').abilities);
-    expect(r.level).toBe(6);
+    expect(r.level).toBe(8);
     expect(r.skills).toEqual(['flurry']);
   });
 });
 
 describe('技能学习', () => {
-  it('learnableSkills 初始为全部 7 个', () => {
+  it('learnableSkills 初始为全部 7 个（未学过的）', () => {
     expect(learnableSkills(newPokemon('Onix'))).toHaveLength(7);
   });
 
-  it('学技能后从可学列表移除', () => {
-    const p = learnSkill(newPokemon('Onix'), 'brave_strike');
-    expect(p.skills).toContain('brave_strike');
+  it('Lv1 戏法可学；学后从可学列表移除', () => {
+    const p = learnSkill(newPokemon('Onix'), 'shield_block'); // 戏法 Lv1
+    expect(p.skills).toContain('shield_block');
     expect(learnableSkills(p)).toHaveLength(6);
   });
 
-  it('重复学 / 未知技能抛错', () => {
-    const p = learnSkill(newPokemon('Onix'), 'brave_strike');
+  it('未达解锁等级不可学', () => {
+    const p = newPokemon('Onix'); // Lv1
+    expect(canLearn(p, 'brave_strike')).toBe(false); // 需 Lv3
+    expect(learnBlockReason(p, 'brave_strike')).toBe('需 Lv3');
     expect(() => learnSkill(p, 'brave_strike')).toThrow();
+  });
+
+  it('达到等级后可学', () => {
+    const p = { ...newPokemon('Onix'), level: 3 };
+    expect(canLearn(p, 'brave_strike')).toBe(true);
+    expect(learnSkill(p, 'brave_strike').skills).toContain('brave_strike');
+  });
+
+  it('技能栏最多 4 个，满了不可学', () => {
+    let p = { ...newPokemon('Onix'), level: 8 };
+    p = learnSkill(p, 'shield_block');
+    p = learnSkill(p, 'stone_skin');
+    p = learnSkill(p, 'precise_aim');
+    p = learnSkill(p, 'brave_strike');
+    expect(skillBarFull(p)).toBe(true);
+    expect(canLearn(p, 'stun_strike')).toBe(false);
+    expect(learnBlockReason(p, 'stun_strike')).toContain('技能栏已满');
+    expect(() => learnSkill(p, 'stun_strike')).toThrow();
+  });
+
+  it('卸下技能后腾出栏位可再学', () => {
+    let p = { ...newPokemon('Onix'), level: 8 };
+    p = learnSkill(p, 'shield_block');
+    p = learnSkill(p, 'stone_skin');
+    p = learnSkill(p, 'precise_aim');
+    p = learnSkill(p, 'brave_strike');
+    p = forgetSkill(p, 'brave_strike');
+    expect(p.skills).not.toContain('brave_strike');
+    expect(canLearn(p, 'stun_strike')).toBe(true);
+  });
+
+  it('重复学 / 未知技能抛错', () => {
+    const p = learnSkill(newPokemon('Onix'), 'shield_block');
+    expect(() => learnSkill(p, 'shield_block')).toThrow();
     expect(() => learnSkill(p, 'nope')).toThrow();
   });
 });

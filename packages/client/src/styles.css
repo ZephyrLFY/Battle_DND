@@ -231,7 +231,23 @@ button.fight {
   border-color: #2c3650;
   cursor: pointer;
 }
-.skill-card.learn:hover { border-color: #4a6; background: #1e2a3a; }
+.skill-card.learn:hover:not(.locked) { border-color: #4a6; background: #1e2a3a; }
+.skill-card.learn.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.skill-card.learned { position: relative; }
+.forget-btn {
+  margin-top: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #3a2730;
+  color: #e0a0a0;
+  border-radius: 5px;
+}
+.lock-reason { font-size: 11px; color: #e0a060; margin-top: 4px; }
+.bar-full { color: #e0a060; font-size: 12px; font-weight: 600; }
 .skill-head {
   display: flex;
   align-items: center;
@@ -240,6 +256,7 @@ button.fight {
   margin-bottom: 4px;
 }
 .skill-name { font-weight: 700; font-size: 13px; color: #e6edf3; }
+.skill-name .unlock { color: #8b98ad; font-weight: 400; }
 .cost-badge {
   font-size: 10px;
   padding: 1px 6px;
@@ -257,10 +274,20 @@ button.fight {
   border: 1px solid #28324a;
   border-radius: 10px;
   padding: 12px;
+  position: relative; /* 供 .ap-overlay 定位 */
 }
-.action-panel.waiting {
-  text-align: center;
-  color: #8b98ad;
+/* 敌方回合：盖一层半透明遮罩，技能栏布局不变（不横跳） */
+.ap-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(14, 19, 32, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #cbd5e1;
+  letter-spacing: 1px;
 }
 .ap-title {
   font-weight: 700;

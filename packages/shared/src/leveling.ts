@@ -15,7 +15,13 @@ import {
   type AbilityKey,
   type PokemonInstance,
 } from './pokemon.js';
-import { ALL_SKILL_IDS, isSkillId, type SkillId } from './skills.js';
+import {
+  ALL_SKILL_IDS,
+  isSkillId,
+  skillDef,
+  MAX_EQUIPPED_SKILLS,
+  type SkillId,
+} from './skills.js';
 
 /** 该等级累计可分配的属性点（1 级 0 点，之后每级 +POINTS_PER_LEVEL）。 */
 export function totalPoints(level: number): number {
@@ -61,16 +67,39 @@ export function respec(p: PokemonInstance): PokemonInstance {
   return { ...p, abilities: { ...talentOf(p.species) } };
 }
 
-/** 还可学的技能（池里未学的）。 */
+/** 技能栏是否已满（最多 MAX_EQUIPPED_SKILLS 个）。 */
+export function skillBarFull(p: PokemonInstance): boolean {
+  return p.skills.length >= MAX_EQUIPPED_SKILLS;
+}
+
+/** 某技能能否学：未学过 + 等级达到解锁 + 技能栏未满。返回原因（可学时为 null）。 */
+export function learnBlockReason(p: PokemonInstance, id: string): string | null {
+  if (!isSkillId(id)) return '未知技能';
+  if (p.skills.includes(id)) return '已学过';
+  if (p.level < skillDef(id).unlockLevel) return `需 Lv${skillDef(id).unlockLevel}`;
+  if (skillBarFull(p)) return `技能栏已满(${MAX_EQUIPPED_SKILLS})`;
+  return null;
+}
+
+export function canLearn(p: PokemonInstance, id: string): boolean {
+  return learnBlockReason(p, id) === null;
+}
+
+/** 还没学的技能（不论是否满足等级/栏位，UI 自行用 canLearn 区分可学/灰显）。 */
 export function learnableSkills(p: PokemonInstance): SkillId[] {
   return ALL_SKILL_IDS.filter((id) => !p.skills.includes(id));
 }
 
-/** 学一个技能。校验：是合法技能 id 且未学过。返回新实例。 */
+/** 学一个技能。校验：合法 + 未学 + 达到解锁等级 + 技能栏未满。返回新实例。 */
 export function learnSkill(p: PokemonInstance, id: string): PokemonInstance {
-  if (!isSkillId(id)) throw new Error(`未知技能: ${id}`);
-  if (p.skills.includes(id)) throw new Error('已学过该技能');
-  return { ...p, skills: [...p.skills, id] };
+  const reason = learnBlockReason(p, id);
+  if (reason) throw new Error(`无法学习：${reason}`);
+  return { ...p, skills: [...p.skills, id as SkillId] };
+}
+
+/** 卸下一个已学技能（技能栏满时可换技能）。 */
+export function forgetSkill(p: PokemonInstance, id: string): PokemonInstance {
+  return { ...p, skills: p.skills.filter((s) => s !== id) };
 }
 
 /**
@@ -92,7 +121,7 @@ export function gainExp(p: PokemonInstance, amount: number): { pokemon: PokemonI
   return { pokemon: { ...p, level, exp }, leveledUp: gained };
 }
 
-/** 该精灵在当前等级是否还有"待领"的成长（剩余点或可学技能）。给 UI 提示用。 */
+/** 该精灵在当前等级是否还有"待领"的成长（剩余点或当前真能学的技能）。给 UI 提示用。 */
 export function hasPendingGrowth(p: PokemonInstance): boolean {
-  return availablePoints(p) > 0 || learnableSkills(p).length > 0;
+  return availablePoints(p) > 0 || learnableSkills(p).some((id) => canLearn(p, id));
 }

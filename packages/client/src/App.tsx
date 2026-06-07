@@ -109,10 +109,9 @@ export function App() {
 }
 
 function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
-  if (battle.finished) return null;
-  if (!battle.myTurn) {
-    return <div className="action-panel waiting">敌方行动中…</div>;
-  }
+  if (battle.finished || !battle.state) return null;
+  // 布局始终稳定：技能栏一直在原位；非我方回合时盖一层半透明遮罩，避免 UI 横跳。
+  const waiting = !battle.myTurn;
   return (
     <div className="action-panel">
       <div className="ap-title">
@@ -129,11 +128,18 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
             title={tip(opt.action)}
           >
             {label(opt.action)}
-            {cost(opt.action) === 1 && <small className="ap-cost">🔮</small>}
-            {!opt.usable && opt.reason && <small className="ap-reason">{opt.reason}</small>}
+            {cost(opt.action) > 0 && <small className="ap-cost">🔮×{cost(opt.action)}</small>}
+            {!waiting && !opt.usable && opt.reason && (
+              <small className="ap-reason">{opt.reason}</small>
+            )}
           </button>
         ))}
       </div>
+      {waiting && (
+        <div className="ap-overlay">
+          <span>敌方行动中…</span>
+        </div>
+      )}
     </div>
   );
 }

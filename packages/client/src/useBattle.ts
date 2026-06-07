@@ -94,7 +94,9 @@ export function useBattle(): UseBattle {
 
   const finished = state ? isOver(state) : false;
   const myTurn = !!state && !finished && state.turn === 'a';
-  const actions = myTurn ? allActions(state!) : [];
+  // 始终返回玩家(a 方)的动作选项，保证战斗面板布局稳定（不随回合横跳）；
+  // 非我方回合时这些选项的 usable 会是 false（reason="等待回合"）。
+  const actions = state && !finished ? allActions(state, 'a') : [];
   const mySlots = state?.a.slots ?? 0;
   const winner = (state?.winner ?? null) as 'a' | 'b' | null;
 
