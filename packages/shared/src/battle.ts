@@ -1,225 +1,445 @@
 /**
- * 战斗引擎 —— 确定性纯函数。移植并修正自 legacy/client/battleground.cpp。
+ * 回合制战斗引擎 —— v2 状态机。重写自 v1 的自动战斗。
  *
- * 设计要点：
- * - 输入：双方精灵实例 + 随机种子。输出：逐回合事件流 + 最终结果。
- * - 不再忙等待轮询 clock()。原版用真实时钟 + interval 秒决定谁先打；
- *   这里离散化为"时间轴"：把每个攻击者的下一次攻击时间排进队列，反复取最早的那个。
- *   行为等价（攻速快的打得多），但 O(回合数)、可复现、不烧 CPU。
- * - 修掉的原版怪逻辑见下方 `// 修正:` 注释。
+ * 形态：
+ *   createBattle(a, b, seed)        → BattleState
+ *   legalActions(state)             → Action[]    （当前该行动方可选的动作）
+ *   applyAction(state, action)      → { state, events }
  *
- * 前端拿到事件流后只负责"回放成动画"，不重算任何数值。
+ * 确定性：state 内含 RNG 游标，(state, action) 恒等映射到 (newState, events)。
+ * 这套同时吃下单机 PvE（AI 选动作）、联机 PvP（服务端权威）、单测。
+ *
+ * 所有判定走 dice.ts，事件带骰子明细，前端渲染成跑团风日志。
  */
-import { computeStats, speciesType, type PokemonType, type Stats } from './pokemon.js';
 import { Rng } from './rng.js';
-
-export interface Combatant {
-  species: string;
-  level: number;
-}
+import { attackRoll, attackRollAdvantage, roll, doubleDice, type RollDetail } from './dice.js';
+import { statsOf, type PokemonInstance, type DerivedStats } from './pokemon.js';
+import { skillDef, type SkillId } from './skills.js';
 
 export type Side = 'a' | 'b';
+export const other = (s: Side): Side => (s === 'a' ? 'b' : 'a');
 
-/** 战斗过程中的可变状态（不对外暴露，只在引擎内部用）。 */
-interface FighterState {
+/** 战斗中一方的可变状态。 */
+export interface Fighter {
   side: Side;
   species: string;
-  type: PokemonType;
   level: number;
-  stats: Stats;
+  stats: DerivedStats;
   hp: number;
-  /** 还剩几回合处于眩晕（被 agi 技能命中），>0 时跳过攻击。 */
+  /** 已学技能。 */
+  skills: SkillId[];
+  /** 每个技能的剩余冷却（回合）。 */
+  cooldowns: Partial<Record<SkillId, number>>;
+  /** 剩余昏迷回合（被眩晕命中）。>0 时该方本回合被跳过。 */
   stunned: number;
-  /** 还剩几回合附带真伤（str 技能 brave）。 */
-  braveTurns: number;
-  /** 还剩几回合减伤（def 技能 stone）。 */
+  /** 石化减伤：剩余回合数与每次减免量。 */
   stoneTurns: number;
-  /** 下一次攻击的时间戳（时间轴上的虚拟时间）。 */
-  nextAt: number;
+  stoneAmount: number;
+  /** 本回合 AC 临时加成（护盾格挡），行动后清零。 */
+  acBonus: number;
+  /** 护盾反弹：>0 时本方被攻击会反弹 acBonus 关联的伤害。 */
+  thorns: number;
+  /** 蓄力：下次攻击强化（charge_smash）。 */
+  charged: boolean;
+}
+
+export type Action =
+  | { kind: 'attack' }
+  | { kind: 'skill'; skill: SkillId };
+
+/** 战斗状态（可序列化）。 */
+export interface BattleState {
+  a: Fighter;
+  b: Fighter;
+  /** 当前该谁行动。 */
+  turn: Side;
+  /** RNG 游标，用于确定性恢复。 */
+  rngCursor: number;
+  round: number;
+  /** 结束时的胜者；进行中为 undefined。 */
+  winner?: Side | null;
 }
 
 export type BattleEvent =
-  | { t: 'start'; a: FighterPublic; b: FighterPublic }
-  | { t: 'attack'; by: Side; skill: string | null; cry: string }
-  | {
-      t: 'damage';
-      to: Side;
-      amount: number;
-      dodged: boolean;
-      crit: boolean;
-      hpLeft: number;
-    }
-  | { t: 'stunned'; who: Side } // 因被眩晕而本回合无法攻击
-  | { t: 'heal'; who: Side; amount: number; hpLeft: number } // fat 生命汲取
-  | { t: 'buff'; who: Side; kind: 'brave' | 'stone' } // 自身增益技能
-  | { t: 'end'; winner: Side | null }; // null = 同归于尽
+  | { t: 'start'; first: Side; a: FighterPublic; b: FighterPublic; initiative: { a: RollDetail; b: RollDetail } }
+  | { t: 'turn'; side: Side; round: number }
+  | { t: 'stunned'; side: Side }
+  | { t: 'action'; side: Side; action: Action; skillName?: string }
+  | { t: 'hit'; by: Side; roll: HitRollInfo; hit: boolean; crit: boolean; vsAc: number }
+  | { t: 'damage'; to: Side; roll: RollDetail; mitigated: number; dealt: number; hpLeft: number }
+  | { t: 'heal'; side: Side; roll: RollDetail; amount: number; hpLeft: number }
+  | { t: 'buff'; side: Side; skill: SkillId; note: string }
+  | { t: 'thorns'; to: Side; roll: RollDetail; dealt: number; hpLeft: number }
+  | { t: 'cooldown'; side: Side }
+  | { t: 'end'; winner: Side | null };
+
+export interface HitRollInfo {
+  natural: number;
+  bonus: number;
+  total: number;
+  nat20: boolean;
+  nat1: boolean;
+}
 
 export interface FighterPublic {
   side: Side;
   species: string;
-  type: PokemonType;
   level: number;
-  fullHp: number;
+  maxHp: number;
+  ac: number;
+  skills: SkillId[];
 }
 
-export interface BattleResult {
-  events: BattleEvent[];
-  winner: Side | null;
-}
+// ─────────────────────────────────────────────────────────────────────────
+// 构造
+// ─────────────────────────────────────────────────────────────────────────
 
-const SKILL_CHANCE = 0.15; // 原版 rans>85 => 15%
-const DODGE_CHANCE = 0.2; // 原版 dodge>80 => 20%
-const CRIT_CHANCE = 0.1; // 原版 crush>90 => 10%
-const SAFETY_TURN_CAP = 10000; // 防止万一不收敛的死循环
-
-function mkFighter(side: Side, c: Combatant): FighterState {
-  const stats = computeStats(c.species, c.level);
+function mkFighter(side: Side, p: PokemonInstance): Fighter {
+  const stats = statsOf(p);
   return {
     side,
-    species: c.species,
-    type: speciesType(c.species),
-    level: c.level,
+    species: p.species,
+    level: p.level,
     stats,
-    hp: stats.fullHp,
+    hp: stats.maxHp,
+    skills: [...p.skills],
+    cooldowns: {},
     stunned: 0,
-    braveTurns: 0,
     stoneTurns: 0,
-    nextAt: stats.interval, // 第一次攻击在 interval 时刻
+    stoneAmount: 0,
+    acBonus: 0,
+    thorns: 0,
+    charged: false,
   };
 }
 
-function toPublic(f: FighterState): FighterPublic {
+function toPublic(f: Fighter): FighterPublic {
   return {
     side: f.side,
     species: f.species,
-    type: f.type,
     level: f.level,
-    fullHp: f.stats.fullHp,
+    maxHp: f.stats.maxHp,
+    ac: f.stats.ac,
+    skills: f.skills,
   };
 }
 
-/**
- * 模拟一整场战斗，返回事件流。确定性：相同入参恒等输出。
- */
-export function simulateBattle(a: Combatant, b: Combatant, seed: number): BattleResult {
+/** 创建战斗：掷先攻定先手，返回初始 state + start 事件。 */
+export function createBattle(
+  aPoke: PokemonInstance,
+  bPoke: PokemonInstance,
+  seed: number,
+): { state: BattleState; events: BattleEvent[] } {
   const rng = new Rng(seed);
-  const fa = mkFighter('a', a);
-  const fb = mkFighter('b', b);
-  const events: BattleEvent[] = [{ t: 'start', a: toPublic(fa), b: toPublic(fb) }];
+  const a = mkFighter('a', aPoke);
+  const b = mkFighter('b', bPoke);
 
-  let turns = 0;
-  while (fa.hp > 0 && fb.hp > 0 && turns < SAFETY_TURN_CAP) {
-    turns++;
-    // 取时间轴上下一个该出手的人；并列时 a 先（与原版"先判 a 再判 b"一致）
-    const attacker = fa.nextAt <= fb.nextAt ? fa : fb;
-    const defender = attacker === fa ? fb : fa;
-    attacker.nextAt += attacker.stats.interval;
+  // 先攻：各掷 1d20 + DEX_mod，高者先；平手 a 先
+  const initA = roll(rng, '1d20', a.stats.initiative);
+  const initB = roll(rng, '1d20', b.stats.initiative);
+  const first: Side = initB.total > initA.total ? 'b' : 'a';
 
-    step(attacker, defender, rng, events);
-    if (defender.hp <= 0) break;
-  }
-
-  const aAlive = fa.hp > 0;
-  const bAlive = fb.hp > 0;
-  const winner: Side | null = aAlive && !bAlive ? 'a' : bAlive && !aAlive ? 'b' : null;
-  events.push({ t: 'end', winner });
-  return { events, winner };
+  const state: BattleState = { a, b, turn: first, rngCursor: rng.cursor, round: 1 };
+  const events: BattleEvent[] = [
+    { t: 'start', first, a: toPublic(a), b: toPublic(b), initiative: { a: initA, b: initB } },
+  ];
+  return { state, events };
 }
 
-/** 单次出手：含眩晕检查、技能/普攻、伤害结算。 */
-function step(att: FighterState, def: FighterState, rng: Rng, out: BattleEvent[]): void {
-  // 计时器递减（眩晕 / 增益的回合数在每次本方出手时衰减）
-  if (att.stunned > 0) {
-    att.stunned--;
-    out.push({ t: 'stunned', who: att.side });
-    return;
+// ─────────────────────────────────────────────────────────────────────────
+// 可选动作
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 当前行动方可选的动作：普攻 + 所有未在 CD 的已学技能。 */
+export function legalActions(state: BattleState): Action[] {
+  if (state.winner !== undefined) return [];
+  const f = state[state.turn];
+  if (f.stunned > 0) return []; // 被眩晕，无可选动作（applyAction 仍可推进以消耗昏迷）
+  const actions: Action[] = [{ kind: 'attack' }];
+  for (const s of f.skills) {
+    if ((f.cooldowns[s] ?? 0) <= 0) actions.push({ kind: 'skill', skill: s });
   }
-  if (att.braveTurns > 0) att.braveTurns--;
-  if (att.stoneTurns > 0) att.stoneTurns--;
-
-  const useSkill = rng.chance(SKILL_CHANCE);
-  const skillName = useSkill ? skillLabel(att.type) : null;
-  out.push({ t: 'attack', by: att.side, skill: skillName, cry: cryOf(att.species) });
-
-  if (useSkill) {
-    applySkill(att, def, rng, out);
-    return;
-  }
-
-  dealDamage(att, def, rng, out, /*braveBonus*/ att.braveTurns > 0);
+  return actions;
 }
 
-/** 技能效果。修正: 原版用临时改 state 标记表达，这里直接表达为干净的状态/伤害。 */
-function applySkill(att: FighterState, def: FighterState, rng: Rng, out: BattleEvent[]): void {
-  switch (att.type) {
-    case 'str': {
-      // 英勇打击：接下来 3 回合普攻附加真伤 lvl*3，且本次也立即打一发带真伤的攻击
-      att.braveTurns = 3;
-      out.push({ t: 'buff', who: att.side, kind: 'brave' });
-      dealDamage(att, def, rng, out, /*braveBonus*/ true);
-      return;
-    }
-    case 'def': {
-      // 石化表皮：接下来 3 回合减伤 lvl*3（防御姿态，本回合不攻击）
-      att.stoneTurns = 3;
-      out.push({ t: 'buff', who: att.side, kind: 'stone' });
-      return;
-    }
-    case 'fat': {
-      // 生命汲取：回血 atk*2
-      const heal = att.stats.atk * 2;
-      const before = att.hp;
-      att.hp = Math.min(att.stats.fullHp, att.hp + heal);
-      out.push({ t: 'heal', who: att.side, amount: att.hp - before, hpLeft: att.hp });
-      return;
-    }
-    case 'agi': {
-      // 眩晕：使对方下两回合无法攻击
-      def.stunned = 2;
-      // 仍打出一次普通伤害（原版眩晕技能也会进入伤害结算）
-      dealDamage(att, def, rng, out, false);
-      return;
-    }
-  }
+export function isOver(state: BattleState): boolean {
+  return state.winner !== undefined;
 }
+
+export function currentFighter(state: BattleState): Fighter {
+  return state[state.turn];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 推进一步
+// ─────────────────────────────────────────────────────────────────────────
 
 /**
- * 伤害结算。修正了原版两处怪逻辑：
- *  - 修正: 原版闪避规则是"伤害>90 时不能闪"（越疼越闪不掉，反直觉）。
- *          新版：agi 闪避率高、其他类型闪避率低，但都与伤害大小无关。
- *  - 修正: str 真伤(brave)用干净的加法表达，def 减伤(stone)同理。
+ * 执行当前行动方的一个动作，返回新 state 与产生的事件。
+ * 纯函数：不修改入参 state（内部深拷贝）。
  */
-function dealDamage(
-  att: FighterState,
-  def: FighterState,
+export function applyAction(
+  state: BattleState,
+  action: Action,
+): { state: BattleState; events: BattleEvent[] } {
+  if (state.winner !== undefined) return { state, events: [] };
+
+  const next = cloneState(state);
+  const rng = new Rng(0);
+  rng.cursor = next.rngCursor;
+  const events: BattleEvent[] = [];
+
+  const actor = next[next.turn];
+  const target = next[other(next.turn)];
+
+  events.push({ t: 'turn', side: actor.side, round: next.round });
+
+  // 昏迷：跳过本回合（无视传入 action）
+  if (actor.stunned > 0) {
+    actor.stunned--;
+    events.push({ t: 'stunned', side: actor.side });
+  } else {
+    const act = validateAction(actor, action);
+    performAction(actor, target, act, rng, events);
+  }
+
+  // 胜负检查
+  if (target.hp <= 0 || actor.hp <= 0) {
+    const aAlive = next.a.hp > 0;
+    const bAlive = next.b.hp > 0;
+    next.winner = aAlive && !bAlive ? 'a' : bAlive && !aAlive ? 'b' : null;
+    events.push({ t: 'end', winner: next.winner });
+    next.rngCursor = rng.cursor;
+    return { state: next, events };
+  }
+
+  // 回合交接：清本回合临时态、递减对方 CD/持续效果由其在自己回合处理
+  endTurnCleanup(actor);
+  advanceTurn(next, events);
+  next.rngCursor = rng.cursor;
+  return { state: next, events };
+}
+
+/** 若动作非法（技能未学或在 CD），回退为普攻。 */
+function validateAction(actor: Fighter, action: Action): Action {
+  if (action.kind === 'attack') return action;
+  const ok = actor.skills.includes(action.skill) && (actor.cooldowns[action.skill] ?? 0) <= 0;
+  return ok ? action : { kind: 'attack' };
+}
+
+function performAction(
+  actor: Fighter,
+  target: Fighter,
+  action: Action,
   rng: Rng,
-  out: BattleEvent[],
-  braveBonus: boolean,
+  events: BattleEvent[],
 ): void {
-  // 基础伤害 = 攻 - 防，下限 0
-  let dmg = Math.max(0, att.stats.atk - def.stats.def);
-
-  // str 真伤：无视防御直接加（brave 期间）
-  if (braveBonus) dmg += att.level * 3;
-
-  // def 减伤：石化期间额外抵挡
-  if (def.stoneTurns > 0) dmg = Math.max(0, dmg - def.level * 3);
-
-  // 闪避：agi 闪避率高，其他类型低；与伤害大小无关（修正原版）
-  const dodgeChance = def.type === 'agi' ? 0.25 : 0.05;
-  if (rng.chance(dodgeChance)) {
-    out.push({ t: 'damage', to: def.side, amount: 0, dodged: true, crit: false, hpLeft: def.hp });
+  if (action.kind === 'attack') {
+    events.push({ t: 'action', side: actor.side, action });
+    doAttack(actor, target, rng, events, { brave: false, advantage: false, charged: actor.charged });
+    actor.charged = false;
     return;
   }
 
-  // 暴击：未闪避时触发，伤害翻倍
-  const crit = rng.chance(CRIT_CHANCE);
-  if (crit) dmg *= 2;
-
-  def.hp = Math.max(0, def.hp - dmg);
-  out.push({ t: 'damage', to: def.side, amount: dmg, dodged: false, crit, hpLeft: def.hp });
+  const def = skillDef(action.skill);
+  events.push({ t: 'action', side: actor.side, action, skillName: def.name });
+  actor.cooldowns[action.skill] = def.cooldown + 1; // +1 因本回合结束会统一递减
+  resolveSkill(action.skill, actor, target, rng, events);
 }
 
-import { SPECIES, TYPE_SKILL } from './pokemon.js';
-const cryOf = (species: string): string => SPECIES[species]?.cry ?? '';
-const skillLabel = (type: PokemonType): string => TYPE_SKILL[type].name;
+// ─────────────────────────────────────────────────────────────────────────
+// 攻击 / 伤害管线
+// ─────────────────────────────────────────────────────────────────────────
+
+interface AttackMods {
+  brave: boolean; // 英勇打击：命中+2，伤害骰翻倍
+  advantage: boolean; // 精准瞄准：优势命中
+  charged: boolean; // 蓄力重击：必中，伤害骰 1d6→3d6
+  extraHitBonus?: number;
+}
+
+function doAttack(
+  actor: Fighter,
+  target: Fighter,
+  rng: Rng,
+  events: BattleEvent[],
+  mods: AttackMods,
+): void {
+  const hitBonus = actor.stats.toHit + (mods.brave ? 2 : 0) + (mods.extraHitBonus ?? 0);
+  const ar = mods.advantage
+    ? attackRollAdvantage(rng, hitBonus, 'adv')
+    : attackRoll(rng, hitBonus);
+
+  const targetAc = target.stats.ac + target.acBonus;
+  // 蓄力必中；自然1必失；自然20必中暴击；否则比 AC
+  const autoHit = mods.charged || ar.nat20;
+  const hit = !ar.nat1 && (autoHit || ar.total >= targetAc);
+  const crit = ar.nat20;
+
+  events.push({
+    t: 'hit',
+    by: actor.side,
+    roll: { natural: ar.natural, bonus: ar.bonus, total: ar.total, nat20: ar.nat20, nat1: ar.nat1 },
+    hit,
+    crit,
+    vsAc: targetAc,
+  });
+
+  if (!hit) {
+    maybeThorns(actor, target, rng, events);
+    return;
+  }
+
+  // 伤害骰：基础 1d6；蓄力→3d6；英勇→2d6；暴击使骰子数量翻倍
+  let dmgSpec = mods.charged ? '3d6' : mods.brave ? '2d6' : '1d6';
+  if (crit) dmgSpec = doubleDice(dmgSpec);
+  const dmgRoll = roll(rng, dmgSpec, actor.stats.dmgBonus);
+
+  let raw = Math.max(0, dmgRoll.total);
+  // 石化减伤
+  let mitigated = 0;
+  if (target.stoneTurns > 0) {
+    mitigated = target.stoneAmount;
+    raw = Math.max(0, raw - mitigated);
+  }
+  target.hp = Math.max(0, target.hp - raw);
+  events.push({
+    t: 'damage',
+    to: target.side,
+    roll: dmgRoll,
+    mitigated,
+    dealt: raw,
+    hpLeft: target.hp,
+  });
+
+  maybeThorns(actor, target, rng, events);
+}
+
+/** 护盾格挡的荆棘反伤：攻击者攻击带 thorns 的目标时受到反弹。 */
+function maybeThorns(actor: Fighter, target: Fighter, rng: Rng, events: BattleEvent[]): void {
+  if (target.thorns > 0 && actor.hp > 0) {
+    const r = roll(rng, '1d4');
+    actor.hp = Math.max(0, actor.hp - r.total);
+    events.push({ t: 'thorns', to: actor.side, roll: r, dealt: r.total, hpLeft: actor.hp });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 技能效果（按 id 分派）
+// ─────────────────────────────────────────────────────────────────────────
+
+function resolveSkill(
+  id: SkillId,
+  actor: Fighter,
+  target: Fighter,
+  rng: Rng,
+  events: BattleEvent[],
+): void {
+  switch (id) {
+    case 'brave_strike':
+      doAttack(actor, target, rng, events, { brave: true, advantage: false, charged: false });
+      return;
+
+    case 'precise_aim':
+      doAttack(actor, target, rng, events, { brave: false, advantage: true, charged: false });
+      return;
+
+    case 'stun_strike': {
+      doAttack(actor, target, rng, events, { brave: false, advantage: false, charged: false });
+      if (target.hp > 0) {
+        // 体质豁免：对方 1d20+CON_mod ≥ 13 抵抗
+        const save = roll(rng, '1d20', target.stats.conMod);
+        if (save.total < 13) {
+          target.stunned = 1;
+          events.push({ t: 'buff', side: actor.side, skill: id, note: `${target.side} 被眩晕（豁免 ${save.total}<13）` });
+        } else {
+          events.push({ t: 'buff', side: actor.side, skill: id, note: `对方抵抗了眩晕（豁免 ${save.total}≥13）` });
+        }
+      }
+      return;
+    }
+
+    case 'flurry': {
+      doAttack(actor, target, rng, events, { brave: false, advantage: false, charged: false });
+      if (target.hp > 0) {
+        doAttack(actor, target, rng, events, { brave: false, advantage: false, charged: false });
+      }
+      return;
+    }
+
+    case 'charge_smash':
+      actor.charged = true;
+      events.push({ t: 'buff', side: actor.side, skill: id, note: '蓄力中，下回合必中重击' });
+      return;
+
+    case 'life_drain': {
+      const r = roll(rng, '1d8', actor.stats.conMod);
+      const before = actor.hp;
+      actor.hp = Math.min(actor.stats.maxHp, actor.hp + Math.max(0, r.total));
+      events.push({ t: 'heal', side: actor.side, roll: r, amount: actor.hp - before, hpLeft: actor.hp });
+      return;
+    }
+
+    case 'stone_skin': {
+      const r = roll(rng, '1d6');
+      actor.stoneTurns = 2;
+      actor.stoneAmount = r.total;
+      events.push({ t: 'buff', side: actor.side, skill: id, note: `石化：2 回合内减伤 ${r.total}` });
+      return;
+    }
+
+    case 'shield_block':
+      actor.acBonus += 5;
+      actor.thorns = 1;
+      events.push({ t: 'buff', side: actor.side, skill: id, note: '本回合 AC+5 并反弹伤害' });
+      return;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 回合管理
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 行动方回合结束：清掉只在"自己这回合"生效的临时态。 */
+function endTurnCleanup(actor: Fighter): void {
+  // 石化在"本方回合开始递减"会更直观，但这里持续效果按"本方回合数"计；
+  // shield_block 的 AC+5/thorns 只覆盖到自己下次被攻击前——保留到下个本方回合开始清。
+  // 这里不清 acBonus/thorns，留到 advanceTurn 给下一个行动者做"自己回合开始"的清理。
+}
+
+/** 切换到下一个行动方，并对其做"回合开始"的持续效果递减与清理。 */
+function advanceTurn(state: BattleState, _events: BattleEvent[]): void {
+  const nextSide = other(state.turn);
+  if (nextSide === 'a' && state.turn === 'b') state.round++;
+  state.turn = nextSide;
+
+  const f = state[nextSide];
+  // 递减该方所有技能 CD
+  for (const k of Object.keys(f.cooldowns) as SkillId[]) {
+    if ((f.cooldowns[k] ?? 0) > 0) f.cooldowns[k] = (f.cooldowns[k] ?? 0) - 1;
+  }
+  // 递减石化持续
+  if (f.stoneTurns > 0) f.stoneTurns--;
+  // 防御姿态只覆盖一个回合循环：到自己下个回合开始时清掉
+  f.acBonus = 0;
+  f.thorns = 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 工具
+// ─────────────────────────────────────────────────────────────────────────
+
+function cloneState(s: BattleState): BattleState {
+  return {
+    a: cloneFighter(s.a),
+    b: cloneFighter(s.b),
+    turn: s.turn,
+    rngCursor: s.rngCursor,
+    round: s.round,
+    winner: s.winner,
+  };
+}
+
+function cloneFighter(f: Fighter): Fighter {
+  return { ...f, skills: [...f.skills], cooldowns: { ...f.cooldowns } };
+}

@@ -1,154 +1,154 @@
 /**
- * 精灵数值模型 —— 移植自原版 legacy/client/petcreating.cpp
+ * 精灵属性模型 —— v2：废除"类型"，改 D&D 风属性点。
  *
- * 数值以原版为基线复刻；明显失衡处做了平衡性调整，每处都用
- * `// 平衡:` 注释标明「原版 → 新版」及理由。
+ * 每只精灵有 STR/DEX/CON 三属性，1 级有不同的"天赋起点"（总和固定 39，分布不同），
+ * 之后玩家升级自由加点、可洗点。战斗数值（AC/命中/HP）由属性派生。
  *
- * 战斗本身是确定性的纯函数（见 battle.ts），本文件只定义"精灵是什么"。
+ * 见 DND_COMBAT.md 设计表 v2。
  */
+import type { SkillId } from './skills.js';
 
-/** 4 种类型。原版用 1/2/3/4 magic number，这里用语义化字符串。 */
-export type PokemonType = 'str' | 'fat' | 'def' | 'agi';
-
-export const TYPE_LABEL: Record<PokemonType, string> = {
-  str: '力量型',
-  fat: '肉盾型',
-  def: '防御型',
-  agi: '敏捷型',
-};
-
-/** 占位美术用的类型主题色（无贴图阶段，Canvas 用纯色块 + 名字）。 */
-export const TYPE_COLOR: Record<PokemonType, string> = {
-  str: '#e0533d', // 红
-  fat: '#4a9d5b', // 绿
-  def: '#8b8b8b', // 灰
-  agi: '#f0c33c', // 黄
-};
-
-/** 一只精灵的派生战斗数值（某个等级下的结果）。 */
-export interface Stats {
-  atk: number;
-  def: number;
-  hp: number;
-  fullHp: number;
-  /** 攻击间隔（秒）。越小攻击越快。 */
-  interval: number;
+/** 三核心属性。 */
+export interface Abilities {
+  str: number;
+  dex: number;
+  con: number;
 }
 
-/** 原版基础值（1 级、未套类型）：petcreating.cpp pokemon::pokemon()。 */
-const BASE = { atk: 15, def: 7, hp: 300, interval: 1.0 } as const;
+export const ABILITY_KEYS = ['str', 'dex', 'con'] as const;
+export type AbilityKey = (typeof ABILITY_KEYS)[number];
 
-/** 出生时按类型的一次性修正：petcreating.cpp changetype()。 */
-const TYPE_BIRTH: Record<PokemonType, Partial<Stats> & { interval?: number }> = {
-  str: { atk: +4, def: -2 },
-  fat: { atk: -1, def: +1, hp: +20 },
-  def: { atk: -2, def: +3 },
-  agi: { atk: +1, def: -1, interval: -0.1 },
-};
-
-/**
- * 每级成长：petcreating.cpp lvlup()。
- *
- * 平衡: 原版 fat 每级 +108hp，是其他类型的近 2 倍，导致肉盾型血厚到碾压。
- *       新版把各类型每级 hp 成长拉到同量级，保留"肉盾偏厚"的定位但不离谱。
- *   原版 → 新版：
- *     str hp +62 → +60 ；  fat hp +108 → +75 ；
- *     def hp +60 → +65 ；  agi hp +50 → +50（不变）
- *   atk/def/interval 维持原版，类型定位（str 暴力 / def 双防 / agi 攻速）不动。
- */
-const TYPE_GROWTH: Record<PokemonType, Stats> = {
-  str: { atk: +12, def: +5, hp: +60, fullHp: +60, interval: 0 },
-  fat: { atk: +7, def: +6, hp: +75, fullHp: +75, interval: 0 },
-  def: { atk: +7, def: +7, hp: +65, fullHp: +65, interval: 0 },
-  agi: { atk: +8, def: +5, hp: +50, fullHp: +50, interval: -0.03 },
+export const ABILITY_LABEL: Record<AbilityKey, string> = {
+  str: '力量',
+  dex: '敏捷',
+  con: '体质',
 };
 
 export const MAX_LEVEL = 15;
+export const MAX_ABILITY = 20;
+/** 每升一级获得的可分配属性点。 */
+export const POINTS_PER_LEVEL = 2;
+/** 1 级天赋三属性总和（所有精灵相同，保证公平）。 */
+export const STARTING_TOTAL = 39;
 
-/** 升到 `level` 级所需累计经验的"每级阈值"：原版 upornot() 用 exp >= 5*level。 */
-export const expToLevelUp = (level: number): number => 5 * level;
-
-/** 击败一只 `level` 级精灵获得的经验：原版 gain() = 10*level。 */
-export const expGainFor = (level: number): number => 10 * level;
-
-/** 每种类型的技能（特性）定义。具体效果在 battle.ts 的伤害管线里实现。 */
-export type SkillKind = 'brave' | 'lifesteal' | 'stone' | 'stun';
-
-export const TYPE_SKILL: Record<PokemonType, { kind: SkillKind; name: string }> = {
-  str: { kind: 'brave', name: '英勇打击' }, // 接下来数回合普攻附加真伤
-  fat: { kind: 'lifesteal', name: '生命汲取' }, // 立即回血
-  def: { kind: 'stone', name: '石化表皮' }, // 接下来数回合减伤
-  agi: { kind: 'stun', name: '眩晕' }, // 使对方下两回合无法攻击
+/** 占位美术用色：无贴图阶段按"最高属性"给个主题色。 */
+export const ABILITY_COLOR: Record<AbilityKey, string> = {
+  str: '#e0533d', // 红
+  dex: '#f0c33c', // 黄
+  con: '#4a9d5b', // 绿
 };
 
-/** 12 只精灵的静态定义：name + type + 战斗喊话。 */
-export interface SpeciesDef {
-  name: string;
-  type: PokemonType;
-  cry: string; // 普攻时的喊话（原版 attack() 返回值）
+/** 12 只精灵的天赋起点。总和均为 39，分布呼应原版类型定位。 */
+export const SPECIES_TALENT: Record<string, Abilities> = {
+  Hitmonlee: { str: 16, dex: 13, con: 10 }, // 极致力量
+  Charmander: { str: 15, dex: 14, con: 10 }, // 力量偏敏
+  Squirtle: { str: 15, dex: 10, con: 14 }, // 力量偏肉
+  Muk: { str: 11, dex: 8, con: 20 }, // 极致体质
+  Licktung: { str: 12, dex: 11, con: 16 }, // 肉盾偏均
+  Krabby: { str: 14, dex: 9, con: 16 }, // 肉盾偏攻
+  Onix: { str: 13, dex: 10, con: 16 }, // 防御
+  Geodude: { str: 14, dex: 11, con: 14 }, // 防御偏攻
+  Shellder: { str: 11, dex: 12, con: 16 }, // 防御偏敏
+  Pikachu: { str: 12, dex: 17, con: 10 }, // 极致敏捷
+  Pidgeotto: { str: 13, dex: 16, con: 10 }, // 敏捷偏攻
+  Bulbasaur: { str: 11, dex: 15, con: 13 }, // 敏捷偏肉
+};
+
+export const SPECIES_NAMES = Object.keys(SPECIES_TALENT);
+
+/** 5e 调整值：floor((属性 - 10) / 2)。 */
+export function abilityMod(score: number): number {
+  return Math.floor((score - 10) / 2);
 }
 
-export const SPECIES: Record<string, SpeciesDef> = {
-  Hitmonlee: { name: 'Hitmonlee', type: 'str', cry: 'Hit!' },
-  Charmander: { name: 'Charmander', type: 'str', cry: 'Fire!' },
-  Squirtle: { name: 'Squirtle', type: 'str', cry: 'Taste my water!' },
-  Licktung: { name: 'Licktung', type: 'fat', cry: 'Lick, lick!' },
-  Muk: { name: 'Muk', type: 'fat', cry: 'Eat my gross muk!' },
-  Krabby: { name: 'Krabby', type: 'fat', cry: 'No one can live under my claw!' },
-  Geodude: { name: 'Geodude', type: 'def', cry: 'Stone power!' },
-  Shellder: { name: 'Shellder', type: 'def', cry: 'Shield smash!' },
-  Onix: { name: 'Onix', type: 'def', cry: 'You will die for your arrogance!' },
-  Bulbasaur: { name: 'Bulbasaur', type: 'agi', cry: 'Eat my seed!' },
-  Pidgeotto: { name: 'Pidgeotto', type: 'agi', cry: 'Can you defend my air attack?' },
-  Pikachu: { name: 'Pikachu', type: 'agi', cry: 'Pika pika!' },
-};
+/** 熟练加值随等级（5e 曲线）。 */
+export function proficiency(level: number): number {
+  const l = clampLevel(level);
+  if (l <= 4) return 2;
+  if (l <= 8) return 3;
+  if (l <= 12) return 4;
+  return 5;
+}
 
-export const SPECIES_NAMES = Object.keys(SPECIES);
+export function clampLevel(level: number): number {
+  return level < 1 ? 1 : level > MAX_LEVEL ? MAX_LEVEL : Math.floor(level);
+}
 
-/** 一只精灵的可序列化实例（存库 / 上线传输用）。 */
+/** 派生战斗数值。 */
+export interface DerivedStats {
+  ac: number; // 护甲值 = 10 + DEX_mod
+  toHit: number; // 命中调整 = STR_mod + PRO
+  dmgBonus: number; // 伤害调整 = STR_mod
+  maxHp: number; // (8 + CON_mod) * level，下限每级至少 1
+  initiative: number; // 先攻调整 = DEX_mod
+  strMod: number;
+  dexMod: number;
+  conMod: number;
+  pro: number;
+}
+
+/** 由"具体属性 + 等级"派生战斗数值（不依赖 species，属性已是分配后的结果）。 */
+export function deriveStats(ab: Abilities, level: number): DerivedStats {
+  const lvl = clampLevel(level);
+  const strMod = abilityMod(ab.str);
+  const dexMod = abilityMod(ab.dex);
+  const conMod = abilityMod(ab.con);
+  const pro = proficiency(lvl);
+  const perLevelHp = Math.max(1, 8 + conMod);
+  return {
+    ac: 10 + dexMod,
+    toHit: strMod + pro,
+    dmgBonus: strMod,
+    maxHp: perLevelHp * lvl,
+    initiative: dexMod,
+    strMod,
+    dexMod,
+    conMod,
+    pro,
+  };
+}
+
+/** 一只精灵的可序列化实例（存库 / 上线传输 / 战斗输入）。 */
 export interface PokemonInstance {
   species: string;
   level: number;
   exp: number;
+  /** 当前属性 = 天赋 + 已分配点（已合并好的最终值）。 */
+  abilities: Abilities;
+  /** 已学技能 id 列表（见 skills.ts）。 */
+  skills: SkillId[];
 }
 
-/**
- * 计算某只精灵在给定等级的派生数值。
- * 复刻原版：构造时套一次 changetype，再 lvlup (level-1) 次。
- * 注意原版每次 lvlup 都回满血，所以满级数值 = 基础 + 出生修正 + 成长×(level-1)。
- */
-export function computeStats(species: string, level: number): Stats {
-  const def = SPECIES[species];
-  if (!def) throw new Error(`Unknown species: ${species}`);
-  const lvl = clampLevel(level);
-  const birth = TYPE_BIRTH[def.type];
-  const growth = TYPE_GROWTH[def.type];
-
-  let atk = BASE.atk + (birth.atk ?? 0);
-  let dfn = BASE.def + (birth.def ?? 0);
-  let hp = BASE.hp + (birth.hp ?? 0);
-  let interval = BASE.interval + (birth.interval ?? 0);
-
-  for (let i = 1; i < lvl; i++) {
-    atk += growth.atk;
-    dfn += growth.def;
-    hp += growth.hp;
-    interval += growth.interval;
-  }
-
-  return { atk, def: dfn, hp, fullHp: hp, interval: round2(interval) };
+/** 用天赋起点 new 一只 1 级精灵（未加点、未学技能）。 */
+export function newPokemon(species: string): PokemonInstance {
+  const talent = SPECIES_TALENT[species];
+  if (!talent) throw new Error(`Unknown species: ${species}`);
+  return {
+    species,
+    level: 1,
+    exp: 0,
+    abilities: { ...talent },
+    skills: [],
+  };
 }
 
-export function clampLevel(level: number): number {
-  if (level < 1) return 1;
-  if (level > MAX_LEVEL) return MAX_LEVEL;
-  return Math.floor(level);
+/** 取一只精灵的派生战斗数值。 */
+export function statsOf(p: PokemonInstance): DerivedStats {
+  return deriveStats(p.abilities, p.level);
 }
 
-export function speciesType(species: string): PokemonType {
-  const def = SPECIES[species];
-  if (!def) throw new Error(`Unknown species: ${species}`);
-  return def.type;
+/** 占位美术主题色：取最高的核心属性。 */
+export function themeColor(ab: Abilities): string {
+  const entries: [AbilityKey, number][] = [
+    ['str', ab.str],
+    ['dex', ab.dex],
+    ['con', ab.con],
+  ];
+  entries.sort((a, b) => b[1] - a[1]);
+  return ABILITY_COLOR[entries[0]![0]];
 }
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+/** 升级所需经验阈值（沿用原版 5*level 的温和曲线）。 */
+export const expToLevelUp = (level: number): number => 5 * level;
+/** 击败 level 级精灵获得经验（沿用原版 10*level）。 */
+export const expGainFor = (level: number): number => 10 * level;

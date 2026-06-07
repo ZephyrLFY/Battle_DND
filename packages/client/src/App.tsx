@@ -1,131 +1,135 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  SPECIES,
+  SKILLS,
   SPECIES_NAMES,
-  TYPE_LABEL,
-  computeStats,
-  simulateBattle,
-  type BattleResult,
+  ALL_SKILL_IDS,
+  newPokemon,
+  learnSkill,
+  allocate,
+  type Action,
+  type PokemonInstance,
 } from '@battle-pokemon/shared';
+import { BuildEditor } from './BuildEditor.js';
 import { BattleStage } from './BattleStage.js';
-import { useBattleReplay } from './useBattleReplay.js';
+import { useBattle } from './useBattle.js';
+
+/** 给敌方一个随机 build（随机精灵 + 随机加点 + 随机学 2~3 个技能），让 PvE 有变化。 */
+function randomEnemy(level: number, seed: number): PokemonInstance {
+  let rnd = seed >>> 0;
+  const rand = () => {
+    rnd = (rnd * 1664525 + 1013904223) >>> 0;
+    return rnd / 0xffffffff;
+  };
+
+  let p = { ...newPokemon(SPECIES_NAMES[Math.floor(rand() * SPECIES_NAMES.length)]!), level };
+
+  // 把可用点随机撒到三属性，直到点数耗尽（allocate 点数不足时抛错跳出）
+  const keys = ['str', 'dex', 'con'] as const;
+  for (let guard = 0; guard < 200; guard++) {
+    try {
+      p = allocate(p, keys[Math.floor(rand() * 3)]!, 1);
+    } catch {
+      break;
+    }
+  }
+
+  // 随机学 2~3 个技能
+  const shuffled = [...ALL_SKILL_IDS].sort(() => rand() - 0.5);
+  for (const s of shuffled.slice(0, 2 + Math.floor(rand() * 2))) {
+    try {
+      p = learnSkill(p, s);
+    } catch {
+      /* 已学过则跳过 */
+    }
+  }
+  return p;
+}
 
 export function App() {
-  const [mySpecies, setMySpecies] = useState('Charmander');
-  const [myLevel, setMyLevel] = useState(8);
-  const [enmSpecies, setEnmSpecies] = useState('Onix');
-  const [enmLevel, setEnmLevel] = useState(8);
+  const [me, setMe] = useState<PokemonInstance>(() => newPokemon('Charmander'));
+  const battle = useBattle();
+  const [phase, setPhase] = useState<'build' | 'battle'>('build');
+  const logRef = useRef<HTMLDivElement>(null);
 
-  const [result, setResult] = useState<BattleResult | null>(null);
-  const { state, start, reset } = useBattleReplay(result);
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [battle.log]);
 
-  const onFight = () => {
+  const onStart = () => {
     const seed = (Math.random() * 0xffffffff) >>> 0;
-    const r = simulateBattle(
-      { species: mySpecies, level: myLevel },
-      { species: enmSpecies, level: enmLevel },
-      seed,
-    );
-    setResult(r);
-    // 等 state 设置后再开始回放（result 是新引用，useBattleReplay 会拿到）
-    setTimeout(start, 0);
+    const enemy = randomEnemy(me.level, seed ^ 0x9e3779b9);
+    battle.start(me, enemy, seed);
+    setPhase('battle');
   };
 
   return (
     <div className="app">
-      <h1>Battle Pokemon <span className="sub">— Web 重写 · 战斗预览</span></h1>
+      <h1>
+        Battle Pokemon <span className="sub">— D&D 回合制 · build + 对战</span>
+      </h1>
 
-      <div className="pickers">
-        <PokePicker
-          title="我方"
-          species={mySpecies}
-          level={myLevel}
-          onSpecies={setMySpecies}
-          onLevel={setMyLevel}
-        />
-        <div className="vs">VS</div>
-        <PokePicker
-          title="敌方"
-          species={enmSpecies}
-          level={enmLevel}
-          onSpecies={setEnmSpecies}
-          onLevel={setEnmLevel}
-        />
-      </div>
-
-      <div className="controls">
-        <button className="fight" onClick={onFight} disabled={state.playing}>
-          {state.playing ? '战斗中…' : '⚔ 开打'}
-        </button>
-        <button onClick={reset} disabled={state.playing || !result}>
-          重置
-        </button>
-      </div>
-
-      <BattleStage a={state.a} b={state.b} />
-
-      {state.finished && (
-        <div className={`verdict ${state.winner === 'a' ? 'win' : state.winner === 'b' ? 'lose' : 'draw'}`}>
-          {state.winner === 'a' ? '🎉 我方获胜！' : state.winner === 'b' ? '💀 我方落败' : '⚖ 同归于尽'}
-        </div>
-      )}
-
-      <BattleLog lines={state.log} />
-    </div>
-  );
-}
-
-function PokePicker(props: {
-  title: string;
-  species: string;
-  level: number;
-  onSpecies: (s: string) => void;
-  onLevel: (l: number) => void;
-}) {
-  const def = SPECIES[props.species]!;
-  const stats = useMemo(
-    () => computeStats(props.species, props.level),
-    [props.species, props.level],
-  );
-  return (
-    <div className="picker">
-      <div className="picker-title">{props.title}</div>
-      <select value={props.species} onChange={(e) => props.onSpecies(e.target.value)}>
-        {SPECIES_NAMES.map((n) => (
-          <option key={n} value={n}>
-            {n}（{TYPE_LABEL[SPECIES[n]!.type]}）
-          </option>
-        ))}
-      </select>
-      <label className="lvl">
-        等级 {props.level}
-        <input
-          type="range"
-          min={1}
-          max={15}
-          value={props.level}
-          onChange={(e) => props.onLevel(Number(e.target.value))}
-        />
-      </label>
-      <div className="stats">
-        <span>类型 {TYPE_LABEL[def.type]}</span>
-        <span>HP {stats.fullHp}</span>
-        <span>攻 {stats.atk}</span>
-        <span>防 {stats.def}</span>
-        <span>攻速 {stats.interval}s</span>
-      </div>
-    </div>
-  );
-}
-
-function BattleLog({ lines }: { lines: string[] }) {
-  return (
-    <div className="log">
-      {lines.length === 0 ? (
-        <div className="log-empty">选择双方精灵后点「开打」</div>
+      {phase === 'build' ? (
+        <>
+          <div className="section-title">配置你的精灵</div>
+          <BuildEditor poke={me} onChange={setMe} />
+          <div className="controls">
+            <button className="fight" onClick={onStart}>
+              ⚔ 开始战斗（随机敌人）
+            </button>
+          </div>
+        </>
       ) : (
-        lines.map((l, i) => <div key={i} className="log-line">{l}</div>)
+        <>
+          <BattleStage state={battle.state} />
+          <ActionPanel battle={battle} />
+          {battle.finished && (
+            <div
+              className={`verdict ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}
+            >
+              {battle.winner === 'a' ? '🎉 你赢了！' : battle.winner === 'b' ? '💀 你输了' : '⚖ 同归于尽'}
+            </div>
+          )}
+          <div className="controls">
+            <button onClick={() => setPhase('build')}>← 回到配置</button>
+            <button className="fight" onClick={onStart} disabled={!battle.finished && !!battle.state}>
+              再来一场
+            </button>
+          </div>
+          <div className="log" ref={logRef}>
+            {battle.log.map((l, i) => (
+              <div key={i} className="log-line">
+                {l}
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
+  if (battle.finished) return null;
+  if (!battle.myTurn) {
+    return <div className="action-panel waiting">敌方行动中…</div>;
+  }
+  return (
+    <div className="action-panel">
+      <div className="ap-title">你的回合 — 选择行动</div>
+      <div className="ap-buttons">
+        {battle.actions.map((a, i) => (
+          <button key={i} className="ap-btn" onClick={() => battle.act(a)} title={tip(a)}>
+            {label(a)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function label(a: Action): string {
+  return a.kind === 'attack' ? '普通攻击' : SKILLS[a.skill].name;
+}
+function tip(a: Action): string {
+  return a.kind === 'attack' ? '1d6 + 力量 伤害' : SKILLS[a.skill].desc;
 }

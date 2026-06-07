@@ -131,4 +131,122 @@ button.fight {
   color: #c2cee0;
   border-bottom: 1px solid #141c2e;
   padding: 2px 0;
+  font-variant-numeric: tabular-nums;
 }
+
+/* ── 养成编辑器 ── */
+.section-title {
+  font-weight: 700;
+  margin: 4px 0 10px;
+  color: #aeb9cc;
+}
+.build {
+  background: #182032;
+  border: 1px solid #28324a;
+  border-radius: 10px;
+  padding: 14px;
+}
+.build-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.build-row select {
+  padding: 6px 10px;
+  background: #0e1320;
+  color: #e6edf3;
+  border: 1px solid #2c3650;
+  border-radius: 6px;
+}
+.abilities {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ability {
+  display: grid;
+  grid-template-columns: 48px 32px 90px 32px;
+  align-items: center;
+  gap: 10px;
+}
+.ab-name { color: #aeb9cc; font-size: 14px; }
+.ab-val { text-align: center; font-weight: 700; }
+.ab-val small { color: #7d8aa3; font-weight: 400; }
+.ab-btn {
+  padding: 4px 0;
+  font-size: 16px;
+  line-height: 1;
+  background: #2c3650;
+}
+.build-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.pts { font-size: 13px; color: #8b98ad; }
+.pts.has { color: #f0c33c; font-weight: 700; }
+.build-controls button {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+.derived {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: #9fb0c9;
+  margin-bottom: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #28324a;
+}
+
+/* ── 技能 ── */
+.skills-title {
+  font-size: 13px;
+  color: #aeb9cc;
+  margin: 8px 0 6px;
+}
+.hint { font-size: 12px; color: #5a6680; }
+.skill-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.skill-tag {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.skill-tag.learned {
+  background: #234a2f;
+  color: #9fe0b0;
+}
+.skill-tag.learn {
+  background: #2c3650;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+.skill-tag.learn small { color: #7d8aa3; }
+
+/* ── 战斗操作面板 ── */
+.action-panel {
+  margin: 12px 0;
+  background: #182032;
+  border: 1px solid #28324a;
+  border-radius: 10px;
+  padding: 12px;
+}
+.action-panel.waiting {
+  text-align: center;
+  color: #8b98ad;
+}
+.ap-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #f0c33c;
+}
+.ap-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.ap-btn {
+  background: #2c3650;
+  padding: 8px 14px;
+}
+.ap-btn:hover { background: #38456a; }

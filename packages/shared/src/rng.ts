@@ -30,4 +30,14 @@ export class Rng {
   chance(p: number): boolean {
     return this.next() < p;
   }
+
+  /** 导出当前内部游标（用于序列化战斗状态 / PvP 权威态恢复）。 */
+  get cursor(): number {
+    return this.state >>> 0;
+  }
+
+  /** 从导出的游标恢复，使后续序列与导出点完全一致。 */
+  set cursor(value: number) {
+    this.state = value >>> 0;
+  }
 }

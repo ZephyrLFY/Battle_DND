@@ -1,96 +1,35 @@
 import { useEffect, useRef } from 'react';
-import { TYPE_COLOR, TYPE_LABEL } from '@battle-pokemon/shared';
-import type { SideView } from './useBattleReplay.js';
+import { themeColor, type BattleState, type Fighter } from '@battle-pokemon/shared';
 
 const W = 600;
-const H = 320;
-
-/** 一个活动的飘字（带生命周期，自行淡出上浮）。 */
-interface FloatText {
-  id: number;
-  text: string;
-  color: string;
-  x: number;
-  y: number;
-  age: number; // 0..1
-}
-
-const KIND_COLOR: Record<string, string> = {
-  dmg: '#ff5555',
-  crit: '#ff2d2d',
-  dodge: '#bbbbbb',
-  heal: '#4dd86b',
-  stun: '#c98bff',
-};
+const H = 280;
 
 /**
- * Canvas 对战舞台。占位美术：每只精灵画成类型主题色的圆 + 名字 + 等级。
- * HP 条画在头顶，飘字从精灵身上上浮淡出。纯展示，数据来自 replay state。
+ * Canvas 对战舞台。占位美术：每只精灵画成"最高属性主题色"的圆 + 名字 + Lv + HP/AC。
+ * 当前行动方高亮描边。纯展示，数据来自 BattleState。
  */
-export function BattleStage({ a, b }: { a: SideView | null; b: SideView | null }) {
+export function BattleStage({ state }: { state: BattleState | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const floatsRef = useRef<FloatText[]>([]);
-  const seenFloatRef = useRef<Set<number>>(new Set());
-
-  // 收集新的飘字事件（按 id 去重）
-  const aPos = { x: 150, y: 180 };
-  const bPos = { x: 450, y: 180 };
-  collectFloat(a, aPos, floatsRef, seenFloatRef);
-  collectFloat(b, bPos, floatsRef, seenFloatRef);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    let raf = 0;
-    let last = performance.now();
-
-    const draw = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
-      ctx.clearRect(0, 0, W, H);
-      drawBackground(ctx);
-
-      if (a) drawFighter(ctx, a, aPos, 'left');
-      if (b) drawFighter(ctx, b, bPos, 'right');
-
-      // 飘字推进
-      const floats = floatsRef.current;
-      for (const f of floats) {
-        f.age += dt / 1.0; // 1 秒生命
-        f.y -= dt * 40;
-      }
-      floatsRef.current = floats.filter((f) => f.age < 1);
-      for (const f of floatsRef.current) drawFloat(ctx, f);
-
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-    // a/b 引用变化时重绘逻辑已在 raf 内读取最新闭包外引用，这里只需启动一次
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [a, b]);
+    ctx.clearRect(0, 0, W, H);
+    drawBackground(ctx);
+    if (!state) {
+      ctx.fillStyle = '#5a6680';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('选好精灵后点「开始战斗」', W / 2, H / 2);
+      return;
+    }
+    const active = state.winner === undefined ? state.turn : null;
+    drawFighter(ctx, state.a, { x: 150, y: 150 }, 'left', active === 'a');
+    drawFighter(ctx, state.b, { x: 450, y: 150 }, 'right', active === 'b');
+  }, [state]);
 
   return <canvas ref={canvasRef} width={W} height={H} className="stage" />;
-}
-
-function collectFloat(
-  side: SideView | null,
-  pos: { x: number; y: number },
-  floatsRef: React.MutableRefObject<FloatText[]>,
-  seenRef: React.MutableRefObject<Set<number>>,
-) {
-  const f = side?.floating;
-  if (!f || seenRef.current.has(f.id)) return;
-  seenRef.current.add(f.id);
-  floatsRef.current.push({
-    id: f.id,
-    text: f.text,
-    color: KIND_COLOR[f.kind] ?? '#fff',
-    x: pos.x,
-    y: pos.y - 60,
-    age: 0,
-  });
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D) {
@@ -99,24 +38,32 @@ function drawBackground(ctx: CanvasRenderingContext2D) {
   g.addColorStop(1, '#1a2233');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
-  // 地面
   ctx.fillStyle = '#3a4a3a';
   ctx.beginPath();
-  ctx.ellipse(W / 2, H - 30, W / 2.2, 40, 0, 0, Math.PI * 2);
+  ctx.ellipse(W / 2, H - 26, W / 2.2, 36, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
 function drawFighter(
   ctx: CanvasRenderingContext2D,
-  side: SideView,
+  f: Fighter,
   pos: { x: number; y: number },
   facing: 'left' | 'right',
+  active: boolean,
 ) {
-  const color = TYPE_COLOR[side.info.type];
-  const r = 46;
+  const ab = abilitiesFromFighter(f);
+  const color = themeColor(ab);
+  const r = 44;
 
-  // 身体（占位圆）
-  ctx.fillStyle = color;
+  if (active) {
+    ctx.strokeStyle = '#f0c33c';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = f.hp > 0 ? color : '#3a3a3a';
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
   ctx.fill();
@@ -124,7 +71,7 @@ function drawFighter(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // 朝向小三角（示意面朝对方）
+  // 朝向三角
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.beginPath();
   const tx = facing === 'left' ? pos.x + r - 8 : pos.x - r + 8;
@@ -134,29 +81,40 @@ function drawFighter(
   ctx.closePath();
   ctx.fill();
 
-  // 名字 + 等级 + 类型
+  // 昏迷标记
+  if (f.stunned > 0) {
+    ctx.fillStyle = '#c98bff';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('💫', pos.x, pos.y - r - 12);
+  }
+
+  // 名字 / 等级
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(side.info.species, pos.x, pos.y + r + 22);
+  ctx.fillText(f.species, pos.x, pos.y + r + 22);
   ctx.font = '12px sans-serif';
   ctx.fillStyle = '#cbd5e1';
-  ctx.fillText(`Lv.${side.info.level} · ${TYPE_LABEL[side.info.type]}`, pos.x, pos.y + r + 40);
+  ctx.fillText(`Lv.${f.level}  AC ${f.stats.ac + f.acBonus}`, pos.x, pos.y + r + 40);
 
-  // HP 条
-  drawHpBar(ctx, pos.x - 50, pos.y - r - 26, side.hp, side.info.fullHp);
+  drawHpBar(ctx, pos.x - 50, pos.y - r - 26, f.hp, f.stats.maxHp);
 }
 
-function drawHpBar(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  hp: number,
-  fullHp: number,
-) {
+/** 从 fighter 反推属性近似（仅为取主题色；用派生 mod 还原大致属性高低）。 */
+function abilitiesFromFighter(f: Fighter): { str: number; dex: number; con: number } {
+  // stats 里有 strMod/dexMod/conMod，反推一个代表值用于选色即可
+  return {
+    str: 10 + f.stats.strMod * 2,
+    dex: 10 + f.stats.dexMod * 2,
+    con: 10 + f.stats.conMod * 2,
+  };
+}
+
+function drawHpBar(ctx: CanvasRenderingContext2D, x: number, y: number, hp: number, maxHp: number) {
   const w = 100;
   const h = 10;
-  const ratio = Math.max(0, Math.min(1, hp / fullHp));
+  const ratio = Math.max(0, Math.min(1, hp / maxHp));
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = '#444';
@@ -166,14 +124,5 @@ function drawHpBar(
   ctx.fillStyle = '#fff';
   ctx.font = '11px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`${Math.ceil(hp)} / ${fullHp}`, x + w / 2, y - 4);
-}
-
-function drawFloat(ctx: CanvasRenderingContext2D, f: FloatText) {
-  ctx.globalAlpha = 1 - f.age;
-  ctx.fillStyle = f.color;
-  ctx.font = 'bold 20px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(f.text, f.x, f.y);
-  ctx.globalAlpha = 1;
+  ctx.fillText(`${Math.max(0, Math.ceil(hp))} / ${maxHp}`, x + w / 2, y - 4);
 }
