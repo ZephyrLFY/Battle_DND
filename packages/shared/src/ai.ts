@@ -8,7 +8,7 @@
  *   - 低血时倾向防御/回复（生命汲取、石化、护盾）
  *   - 蓄力重击的时机判断（对方不会打断时才蓄力）
  *   - 难度分级（简单=随机，普通=贪心，困难=带预判）
- * 见 DND_COMBAT.md 第七节 / 设计决策：MVP 先纯随机。
+ * MVP 先纯随机。
  */
 import { Rng } from './rng.js';
 import { legalActions, type Action, type BattleState } from './battle.js';

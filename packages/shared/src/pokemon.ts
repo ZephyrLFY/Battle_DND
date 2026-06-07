@@ -4,7 +4,7 @@
  * 每只精灵有 STR/DEX/CON 三属性，1 级有不同的"天赋起点"（总和固定 39，分布不同），
  * 之后玩家升级自由加点、可洗点。战斗数值（AC/命中/HP）由属性派生。
  *
- * 见 DND_COMBAT.md 设计表 v2。
+ * D&D 风：属性调整值用 5e 公式 floor((属性-10)/2)，战斗数值由属性派生。
  */
 import type { SkillId } from './skills.js';
 
