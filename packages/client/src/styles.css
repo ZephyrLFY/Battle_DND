@@ -1,0 +1,134 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #0e1320;
+  color: #e6edf3;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.app {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 20px;
+}
+h1 .sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: #8b98ad;
+}
+
+.pickers {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.vs {
+  font-weight: 800;
+  color: #f0c33c;
+  font-size: 18px;
+}
+
+.picker {
+  background: #182032;
+  border: 1px solid #28324a;
+  border-radius: 10px;
+  padding: 12px;
+}
+.picker-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.picker select {
+  width: 100%;
+  padding: 6px;
+  background: #0e1320;
+  color: #e6edf3;
+  border: 1px solid #2c3650;
+  border-radius: 6px;
+}
+.lvl {
+  display: block;
+  font-size: 13px;
+  margin: 10px 0 6px;
+  color: #aeb9cc;
+}
+.lvl input {
+  width: 100%;
+}
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: #9fb0c9;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin: 18px 0;
+}
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 14px;
+  background: #2c3650;
+  color: #e6edf3;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.fight {
+  background: #e0533d;
+  color: #fff;
+}
+
+.stage {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #28324a;
+  display: block;
+}
+
+.verdict {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 800;
+  margin: 14px 0;
+}
+.verdict.win { color: #4dd86b; }
+.verdict.lose { color: #ff5555; }
+.verdict.draw { color: #f0c33c; }
+
+.log {
+  margin-top: 16px;
+  background: #0a0f1a;
+  border: 1px solid #1e2740;
+  border-radius: 10px;
+  padding: 12px;
+  height: 180px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.log-empty {
+  color: #5a6680;
+  text-align: center;
+  padding-top: 60px;
+}
+.log-line {
+  color: #c2cee0;
+  border-bottom: 1px solid #141c2e;
+  padding: 2px 0;
+}

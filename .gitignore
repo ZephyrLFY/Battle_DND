@@ -6,3 +6,4 @@ dist/
 .env
 .vite/
 coverage/
+*.tsbuildinfo
