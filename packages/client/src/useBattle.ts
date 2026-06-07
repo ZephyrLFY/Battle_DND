@@ -1,0 +1,104 @@
+/**
+ * 回合制战斗 hook —— 驱动 shared 的状态机。
+ *
+ * 玩家固定是 a 方，敌方 b 由随机 AI 操作。玩家选动作 → 推进 a 回合 →
+ * 若轮到 b，自动用 AI 选动作推进（带小延迟，让日志逐行出，有节奏感）。
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createBattle,
+  applyAction,
+  allActions,
+  chooseAction,
+  isOver,
+  type Action,
+  type ActionOption,
+  type BattleState,
+  type BattleEvent,
+  type PokemonInstance,
+} from '@battle-pokemon/shared';
+import { eventToLines } from './battleLog.js';
+
+const AI_DELAY_MS = 700;
+
+export interface UseBattle {
+  state: BattleState | null;
+  log: string[];
+  myTurn: boolean;
+  actions: ActionOption[]; // 玩家全部动作选项（含不可用，供灰显），仅当 myTurn
+  mySlots: number; // 我方剩余法术位
+  finished: boolean;
+  winner: 'a' | 'b' | null;
+  start: (me: PokemonInstance, enemy: PokemonInstance, seed: number) => void;
+  act: (action: Action) => void;
+}
+
+export function useBattle(): UseBattle {
+  const [state, setState] = useState<BattleState | null>(null);
+  const [log, setLog] = useState<string[]>([]);
+  const seedRef = useRef(0);
+  const aiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const appendEvents = useCallback((events: BattleEvent[]) => {
+    const lines = events.flatMap(eventToLines);
+    if (lines.length) setLog((prev) => [...prev, ...lines]);
+  }, []);
+
+  const start = useCallback(
+    (me: PokemonInstance, enemy: PokemonInstance, seed: number) => {
+      if (aiTimer.current) clearTimeout(aiTimer.current);
+      seedRef.current = seed;
+      const { state: s0, events } = createBattle(me, enemy, seed);
+      setLog([]);
+      appendEvents(events);
+      setState(s0);
+    },
+    [appendEvents],
+  );
+
+  const step = useCallback(
+    (cur: BattleState, action: Action): BattleState => {
+      const { state: ns, events } = applyAction(cur, action);
+      appendEvents(events);
+      return ns;
+    },
+    [appendEvents],
+  );
+
+  const act = useCallback(
+    (action: Action) => {
+      setState((cur) => {
+        if (!cur || isOver(cur) || cur.turn !== 'a') return cur;
+        return step(cur, action);
+      });
+    },
+    [step],
+  );
+
+  // 当轮到 AI（b 方）且未结束，自动延时推进
+  useEffect(() => {
+    if (!state || isOver(state) || state.turn !== 'b') return;
+    aiTimer.current = setTimeout(() => {
+      setState((cur) => {
+        if (!cur || isOver(cur) || cur.turn !== 'b') return cur;
+        // 每步用递增种子，避免每回合相同选择
+        const aiSeed = (seedRef.current * 2654435761 + cur.round * 40503) >>> 0;
+        const action = chooseAction(cur, aiSeed);
+        return step(cur, action);
+      });
+    }, AI_DELAY_MS);
+    return () => void (aiTimer.current && clearTimeout(aiTimer.current));
+  }, [state, step]);
+
+  useEffect(() => () => void (aiTimer.current && clearTimeout(aiTimer.current)), []);
+
+  const finished = state ? isOver(state) : false;
+  const myTurn = !!state && !finished && state.turn === 'a';
+  // 始终返回玩家(a 方)的动作选项，保证战斗面板布局稳定（不随回合横跳）；
+  // 非我方回合时这些选项的 usable 会是 false（reason="等待回合"）。
+  const actions = state && !finished ? allActions(state, 'a') : [];
+  const mySlots = state?.a.slots ?? 0;
+  const winner = (state?.winner ?? null) as 'a' | 'b' | null;
+
+  return { state, log, myTurn, actions, mySlots, finished, winner, start, act };
+}
