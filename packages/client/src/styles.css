@@ -207,25 +207,48 @@ button.fight {
 .skills-title {
   font-size: 13px;
   color: #aeb9cc;
-  margin: 8px 0 6px;
+  margin: 10px 0 6px;
 }
 .hint { font-size: 12px; color: #5a6680; }
-.skill-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.skill-tag {
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 6px;
+.skill-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
-.skill-tag.learned {
-  background: #234a2f;
-  color: #9fe0b0;
+.skill-card {
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font: inherit;
 }
-.skill-tag.learn {
-  background: #2c3650;
-  color: #cbd5e1;
+.skill-card.learned {
+  background: #1c2c22;
+  border-color: #2f5a3c;
+}
+.skill-card.learn {
+  background: #1a2233;
+  border-color: #2c3650;
   cursor: pointer;
 }
-.skill-tag.learn small { color: #7d8aa3; }
+.skill-card.learn:hover { border-color: #4a6; background: #1e2a3a; }
+.skill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.skill-name { font-weight: 700; font-size: 13px; color: #e6edf3; }
+.cost-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.cost-badge.spell { background: #3a2c5a; color: #c8a8ff; }
+.cost-badge.cantrip { background: #2a3a4a; color: #9fc0d8; }
+.skill-desc { font-size: 12px; color: #9fb0c9; line-height: 1.45; }
 
 /* ── 战斗操作面板 ── */
 .action-panel {
@@ -243,10 +266,24 @@ button.fight {
   font-weight: 700;
   margin-bottom: 8px;
   color: #f0c33c;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ap-slots {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c8a8ff;
 }
 .ap-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .ap-btn {
   background: #2c3650;
   padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.ap-btn:hover { background: #38456a; }
+.ap-btn:hover:not(.disabled) { background: #38456a; }
+.ap-btn.disabled { opacity: 0.4; }
+.ap-cost { font-size: 11px; }
+.ap-reason { font-size: 10px; color: #ff8888; }

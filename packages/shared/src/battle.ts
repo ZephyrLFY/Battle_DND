@@ -28,8 +28,8 @@ export interface Fighter {
   hp: number;
   /** 已学技能。 */
   skills: SkillId[];
-  /** 每个技能的剩余冷却（回合）。 */
-  cooldowns: Partial<Record<SkillId, number>>;
+  /** 剩余法术位（整场不回，放耗位技能消耗 1）。 */
+  slots: number;
   /** 剩余昏迷回合（被眩晕命中）。>0 时该方本回合被跳过。 */
   stunned: number;
   /** 石化减伤：剩余回合数与每次减免量。 */
@@ -67,10 +67,10 @@ export type BattleEvent =
   | { t: 'action'; side: Side; action: Action; skillName?: string }
   | { t: 'hit'; by: Side; roll: HitRollInfo; hit: boolean; crit: boolean; vsAc: number }
   | { t: 'damage'; to: Side; roll: RollDetail; mitigated: number; dealt: number; hpLeft: number }
-  | { t: 'heal'; side: Side; roll: RollDetail; amount: number; hpLeft: number }
+  | { t: 'lifesteal'; side: Side; amount: number; hpLeft: number } // CON 被动吸血
   | { t: 'buff'; side: Side; skill: SkillId; note: string }
   | { t: 'thorns'; to: Side; roll: RollDetail; dealt: number; hpLeft: number }
-  | { t: 'cooldown'; side: Side }
+  | { t: 'slot'; side: Side; spent: SkillId; left: number } // 消耗法术位
   | { t: 'end'; winner: Side | null };
 
 export interface HitRollInfo {
@@ -88,6 +88,7 @@ export interface FighterPublic {
   maxHp: number;
   ac: number;
   skills: SkillId[];
+  maxSlots: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ function mkFighter(side: Side, p: PokemonInstance): Fighter {
     stats,
     hp: stats.maxHp,
     skills: [...p.skills],
-    cooldowns: {},
+    slots: stats.maxSlots,
     stunned: 0,
     stoneTurns: 0,
     stoneAmount: 0,
@@ -121,6 +122,7 @@ function toPublic(f: Fighter): FighterPublic {
     maxHp: f.stats.maxHp,
     ac: f.stats.ac,
     skills: f.skills,
+    maxSlots: f.stats.maxSlots,
   };
 }
 
@@ -150,16 +152,40 @@ export function createBattle(
 // 可选动作
 // ─────────────────────────────────────────────────────────────────────────
 
-/** 当前行动方可选的动作：普攻 + 所有未在 CD 的已学技能。 */
+/** 当前行动方可合法执行的动作：普攻 + 法术位足够的已学技能（戏法 cost0 总可用）。 */
 export function legalActions(state: BattleState): Action[] {
+  return allActions(state)
+    .filter((a) => a.usable)
+    .map((a) => a.action);
+}
+
+/** 一个动作及其可用性（给 UI：不可用的也要列出来灰显，附理由）。 */
+export interface ActionOption {
+  action: Action;
+  usable: boolean;
+  reason?: string; // 不可用原因（如"无法术位"）
+}
+
+/**
+ * 当前行动方的全部动作选项（含不可用的），供 UI 灰显。
+ * 普攻总可用；技能按法术位消耗判断。被眩晕时全部不可用。
+ */
+export function allActions(state: BattleState): ActionOption[] {
   if (state.winner !== undefined) return [];
   const f = state[state.turn];
-  if (f.stunned > 0) return []; // 被眩晕，无可选动作（applyAction 仍可推进以消耗昏迷）
-  const actions: Action[] = [{ kind: 'attack' }];
+  const stunned = f.stunned > 0;
+
+  const opts: ActionOption[] = [
+    { action: { kind: 'attack' }, usable: !stunned, reason: stunned ? '昏迷中' : undefined },
+  ];
   for (const s of f.skills) {
-    if ((f.cooldowns[s] ?? 0) <= 0) actions.push({ kind: 'skill', skill: s });
+    const cost = skillDef(s).cost;
+    const enough = f.slots >= cost;
+    const usable = !stunned && enough;
+    const reason = stunned ? '昏迷中' : !enough ? '无法术位' : undefined;
+    opts.push({ action: { kind: 'skill', skill: s }, usable, reason });
   }
-  return actions;
+  return opts;
 }
 
 export function isOver(state: BattleState): boolean {
@@ -213,17 +239,16 @@ export function applyAction(
     return { state: next, events };
   }
 
-  // 回合交接：清本回合临时态、递减对方 CD/持续效果由其在自己回合处理
-  endTurnCleanup(actor);
+  // 回合交接：持续效果在下一个行动方"回合开始"时递减/清理
   advanceTurn(next, events);
   next.rngCursor = rng.cursor;
   return { state: next, events };
 }
 
-/** 若动作非法（技能未学或在 CD），回退为普攻。 */
+/** 若动作非法（技能未学或法术位不足），回退为普攻。 */
 function validateAction(actor: Fighter, action: Action): Action {
   if (action.kind === 'attack') return action;
-  const ok = actor.skills.includes(action.skill) && (actor.cooldowns[action.skill] ?? 0) <= 0;
+  const ok = actor.skills.includes(action.skill) && actor.slots >= skillDef(action.skill).cost;
   return ok ? action : { kind: 'attack' };
 }
 
@@ -243,7 +268,10 @@ function performAction(
 
   const def = skillDef(action.skill);
   events.push({ t: 'action', side: actor.side, action, skillName: def.name });
-  actor.cooldowns[action.skill] = def.cooldown + 1; // +1 因本回合结束会统一递减
+  if (def.cost > 0) {
+    actor.slots = Math.max(0, actor.slots - def.cost);
+    events.push({ t: 'slot', side: actor.side, spent: action.skill, left: actor.slots });
+  }
   resolveSkill(action.skill, actor, target, rng, events);
 }
 
@@ -312,6 +340,16 @@ function doAttack(
     hpLeft: target.hp,
   });
 
+  // CON 被动吸血：造成伤害的一部分转化为回血（只有打中才回）
+  if (raw > 0 && actor.stats.lifestealRate > 0 && actor.hp > 0) {
+    const heal = Math.floor(raw * actor.stats.lifestealRate);
+    if (heal > 0) {
+      const before = actor.hp;
+      actor.hp = Math.min(actor.stats.maxHp, actor.hp + heal);
+      events.push({ t: 'lifesteal', side: actor.side, amount: actor.hp - before, hpLeft: actor.hp });
+    }
+  }
+
   maybeThorns(actor, target, rng, events);
 }
 
@@ -372,14 +410,6 @@ function resolveSkill(
       events.push({ t: 'buff', side: actor.side, skill: id, note: '蓄力中，下回合必中重击' });
       return;
 
-    case 'life_drain': {
-      const r = roll(rng, '1d8', actor.stats.conMod);
-      const before = actor.hp;
-      actor.hp = Math.min(actor.stats.maxHp, actor.hp + Math.max(0, r.total));
-      events.push({ t: 'heal', side: actor.side, roll: r, amount: actor.hp - before, hpLeft: actor.hp });
-      return;
-    }
-
     case 'stone_skin': {
       const r = roll(rng, '1d6');
       actor.stoneTurns = 2;
@@ -400,13 +430,6 @@ function resolveSkill(
 // 回合管理
 // ─────────────────────────────────────────────────────────────────────────
 
-/** 行动方回合结束：清掉只在"自己这回合"生效的临时态。 */
-function endTurnCleanup(actor: Fighter): void {
-  // 石化在"本方回合开始递减"会更直观，但这里持续效果按"本方回合数"计；
-  // shield_block 的 AC+5/thorns 只覆盖到自己下次被攻击前——保留到下个本方回合开始清。
-  // 这里不清 acBonus/thorns，留到 advanceTurn 给下一个行动者做"自己回合开始"的清理。
-}
-
 /** 切换到下一个行动方，并对其做"回合开始"的持续效果递减与清理。 */
 function advanceTurn(state: BattleState, _events: BattleEvent[]): void {
   const nextSide = other(state.turn);
@@ -414,10 +437,6 @@ function advanceTurn(state: BattleState, _events: BattleEvent[]): void {
   state.turn = nextSide;
 
   const f = state[nextSide];
-  // 递减该方所有技能 CD
-  for (const k of Object.keys(f.cooldowns) as SkillId[]) {
-    if ((f.cooldowns[k] ?? 0) > 0) f.cooldowns[k] = (f.cooldowns[k] ?? 0) - 1;
-  }
   // 递减石化持续
   if (f.stoneTurns > 0) f.stoneTurns--;
   // 防御姿态只覆盖一个回合循环：到自己下个回合开始时清掉
@@ -441,5 +460,5 @@ function cloneState(s: BattleState): BattleState {
 }
 
 function cloneFighter(f: Fighter): Fighter {
-  return { ...f, skills: [...f.skills], cooldowns: { ...f.cooldowns } };
+  return { ...f, skills: [...f.skills] };
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createBattle,
   legalActions,
+  allActions,
   applyAction,
   isOver,
   type BattleState,
@@ -105,10 +106,10 @@ describe('legalActions — 技能可选性与 CD', () => {
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(true);
   });
 
-  it('cooldown:1 的技能用过后，下个本方回合不可用，再下个回合恢复', () => {
-    // 构造 a 先手、双方都活很久的对局，跟踪 brave_strike 可用性
-    const a = withSkills('Onix', 15, ['brave_strike']); // 高血厚，撑得久
-    const b = withSkills('Onix', 15, []);
+  it('耗位法术用尽法术位后不可用；戏法（cost0）始终可用', () => {
+    // Onix Lv3 → maxSlots = 1+floor(3/4) = 1，只能放一次耗位法术
+    const a = withSkills('Onix', 3, ['brave_strike', 'shield_block']); // 法术 + 戏法各一
+    const b = withSkills('Onix', 15, []); // 厚血陪练，撑得久
     let st: BattleState | null = null;
     for (let seed = 0; seed < 80; seed++) {
       const { state } = createBattle(a, b, seed);
@@ -119,44 +120,71 @@ describe('legalActions — 技能可选性与 CD', () => {
     }
     expect(st).not.toBeNull();
     let state = st!;
-    // a 放 brave_strike
+    expect(state.a.slots).toBe(1);
+
+    // a 放 brave_strike（耗 1 位）
     state = applyAction(state, { kind: 'skill', skill: 'brave_strike' }).state;
-    // 轮到 b，普攻
-    state = applyAction(state, { kind: 'attack' }).state;
-    // 回到 a：cooldown:1 应仍在冷却（不可用）
+    expect(state.a.slots).toBe(0);
+    state = applyAction(state, { kind: 'attack' }).state; // b 普攻
+
+    // 回到 a：耗位法术不再可用，但戏法 shield_block 仍在
     expect(state.turn).toBe('a');
-    const actsCd = legalActions(state);
-    expect(actsCd.some((x) => x.kind === 'skill')).toBe(false);
-    // a 普攻，b 普攻
+    const acts = legalActions(state);
+    expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(false);
+    expect(acts.some((x) => x.kind === 'skill' && x.skill === 'shield_block')).toBe(true);
+  });
+
+  it('allActions 把不可用法术也列出来并标 usable:false + 理由', () => {
+    const a = withSkills('Onix', 3, ['brave_strike']);
+    const b = withSkills('Onix', 15, []);
+    let st: BattleState | null = null;
+    for (let seed = 0; seed < 80; seed++) {
+      const { state } = createBattle(a, b, seed);
+      if (state.turn === 'a') { st = state; break; }
+    }
+    let state = st!;
+    state = applyAction(state, { kind: 'skill', skill: 'brave_strike' }).state; // 耗光
     state = applyAction(state, { kind: 'attack' }).state;
-    state = applyAction(state, { kind: 'attack' }).state;
-    // 再回到 a：应恢复可用
-    expect(state.turn).toBe('a');
-    const actsReady = legalActions(state);
-    expect(actsReady.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(true);
+    const opts = allActions(state);
+    const brave = opts.find((o) => o.action.kind === 'skill' && o.action.skill === 'brave_strike');
+    expect(brave?.usable).toBe(false);
+    expect(brave?.reason).toBe('无法术位');
   });
 });
 
 describe('技能效果', () => {
-  it('生命汲取：低血时回血且不超过 maxHp', () => {
-    const a = withSkills('Muk', 10, ['life_drain']); // 高 CON
-    const b = withSkills('Hitmonlee', 10, []);
+  it('CON 被动吸血：高 CON 攻击者命中造成伤害时回血，且不超过 maxHp', () => {
+    // Muk 高 CON → lifestealRate>0；打脆皮 Pikachu 确保能命中造成伤害
+    const a = withSkills('Muk', 10, []);
+    const b = withSkills('Pikachu', 1, []);
     let st: BattleState | null = null;
     for (let seed = 0; seed < 80; seed++) {
       const { state } = createBattle(a, b, seed);
-      if (state.turn === 'a') {
+      if (state.turn === 'a' && state.a.stats.lifestealRate > 0) {
         st = state;
         break;
       }
     }
+    expect(st).not.toBeNull();
     let state = st!;
-    state.a.hp = 5; // 人为压低血量
-    const r = applyAction(state, { kind: 'skill', skill: 'life_drain' });
-    const heal = r.events.find((e) => e.t === 'heal');
-    expect(heal?.t).toBe('heal');
-    if (heal?.t === 'heal') {
-      expect(heal.amount).toBeGreaterThan(0);
-      expect(heal.hpLeft).toBeLessThanOrEqual(r.state.a.stats.maxHp);
+    state.a.hp = 5; // 压低血量，便于观察回血
+    // 反复普攻直到出现一次 lifesteal（命中且造成伤害才触发）
+    let sawLifesteal = false;
+    for (let i = 0; i < 20 && !sawLifesteal && state.turn === 'a'; i++) {
+      const r = applyAction(state, { kind: 'attack' });
+      const ls = r.events.find((e) => e.t === 'lifesteal');
+      if (ls && ls.t === 'lifesteal') {
+        expect(ls.amount).toBeGreaterThan(0);
+        expect(ls.hpLeft).toBeLessThanOrEqual(r.state.a.stats.maxHp);
+        sawLifesteal = true;
+      }
+      state = r.state;
+      if (state.turn === 'b') state = applyAction(state, { kind: 'attack' }).state;
     }
+    expect(sawLifesteal).toBe(true);
+  });
+
+  it('低 CON 攻击者无吸血（lifestealRate 0）', () => {
+    expect(createBattle(newPokemon('Pikachu'), newPokemon('Onix'), 1).state.a.stats.lifestealRate).toBe(0);
   });
 });

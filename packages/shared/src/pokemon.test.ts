@@ -67,6 +67,20 @@ describe('deriveStats — 战斗数值派生', () => {
     // CON1 → mod -5，8-5=3 仍 >=1；构造 CON 让 8+mod<1
     expect(deriveStats({ str: 10, dex: 10, con: 1 }, 1).maxHp).toBeGreaterThanOrEqual(1);
   });
+
+  it('maxSlots = 1 + floor(level/4)', () => {
+    const ab = { str: 10, dex: 10, con: 10 };
+    expect(deriveStats(ab, 1).maxSlots).toBe(1);
+    expect(deriveStats(ab, 4).maxSlots).toBe(2);
+    expect(deriveStats(ab, 8).maxSlots).toBe(3);
+    expect(deriveStats(ab, 15).maxSlots).toBe(4);
+  });
+
+  it('lifestealRate = max(0, CON_mod) * 5%；低 CON 为 0', () => {
+    expect(deriveStats({ str: 10, dex: 10, con: 14 }, 1).lifestealRate).toBeCloseTo(0.1, 5); // +2
+    expect(deriveStats({ str: 10, dex: 10, con: 20 }, 1).lifestealRate).toBeCloseTo(0.25, 5); // +5
+    expect(deriveStats({ str: 10, dex: 10, con: 8 }, 1).lifestealRate).toBe(0); // -1 → 0
+  });
 });
 
 describe('newPokemon / statsOf', () => {

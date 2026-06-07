@@ -83,37 +83,55 @@ export function BuildEditor({
         <span>命中 +{stats.toHit}</span>
         <span>伤害 +{stats.dmgBonus}</span>
         <span>先攻 {fmt(stats.initiative)}</span>
+        <span>🔮 法术位 {stats.maxSlots}</span>
+        {stats.lifestealRate > 0 && <span>🩸 吸血 {Math.round(stats.lifestealRate * 100)}%</span>}
       </div>
 
       <div className="skills">
         <div className="skills-title">已学技能（{poke.skills.length}）</div>
         {poke.skills.length === 0 && <div className="hint">还没学技能</div>}
-        <div className="skill-tags">
+        <div className="skill-list">
           {poke.skills.map((id) => (
-            <span key={id} className="skill-tag learned" title={SKILLS[id].desc}>
-              {SKILLS[id].name}
-            </span>
+            <div key={id} className="skill-card learned">
+              <SkillHeader id={id} />
+              <div className="skill-desc">{SKILLS[id].desc}</div>
+            </div>
           ))}
         </div>
         {learnable.length > 0 && (
           <>
             <div className="skills-title">可学（点击学习）</div>
-            <div className="skill-tags">
+            <div className="skill-list">
               {learnable.map((id) => (
                 <button
                   key={id}
-                  className="skill-tag learn"
-                  title={SKILLS[id].desc}
+                  className="skill-card learn"
                   onClick={() => onChange(learnSkill(poke, id))}
                 >
-                  + {SKILLS[id].name}
-                  <small> CD{SKILLS[id].cooldown}</small>
+                  <SkillHeader id={id} prefix="＋ " />
+                  <div className="skill-desc">{SKILLS[id].desc}</div>
                 </button>
               ))}
             </div>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** 技能名 + 消耗徽章（法术位 / 戏法）。 */
+function SkillHeader({ id, prefix = '' }: { id: keyof typeof SKILLS; prefix?: string }) {
+  const def = SKILLS[id];
+  return (
+    <div className="skill-head">
+      <span className="skill-name">
+        {prefix}
+        {def.name}
+      </span>
+      <span className={`cost-badge ${def.cost === 1 ? 'spell' : 'cantrip'}`}>
+        {def.cost === 1 ? '🔮 法术位' : '戏法·免费'}
+      </span>
     </div>
   );
 }

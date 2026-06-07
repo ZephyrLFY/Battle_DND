@@ -8,10 +8,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createBattle,
   applyAction,
-  legalActions,
+  allActions,
   chooseAction,
   isOver,
   type Action,
+  type ActionOption,
   type BattleState,
   type BattleEvent,
   type PokemonInstance,
@@ -24,7 +25,8 @@ export interface UseBattle {
   state: BattleState | null;
   log: string[];
   myTurn: boolean;
-  actions: Action[]; // 玩家当前可选动作（仅当 myTurn）
+  actions: ActionOption[]; // 玩家全部动作选项（含不可用，供灰显），仅当 myTurn
+  mySlots: number; // 我方剩余法术位
   finished: boolean;
   winner: 'a' | 'b' | null;
   start: (me: PokemonInstance, enemy: PokemonInstance, seed: number) => void;
@@ -92,8 +94,9 @@ export function useBattle(): UseBattle {
 
   const finished = state ? isOver(state) : false;
   const myTurn = !!state && !finished && state.turn === 'a';
-  const actions = myTurn ? legalActions(state!) : [];
+  const actions = myTurn ? allActions(state!) : [];
+  const mySlots = state?.a.slots ?? 0;
   const winner = (state?.winner ?? null) as 'a' | 'b' | null;
 
-  return { state, log, myTurn, actions, finished, winner, start, act };
+  return { state, log, myTurn, actions, mySlots, finished, winner, start, act };
 }

@@ -43,8 +43,8 @@ export function eventToLines(ev: BattleEvent): string[] {
       ];
     }
 
-    case 'heal':
-      return [`💚 ${sideName(ev.side)} 生命汲取 ${ev.roll.spec} ${formatRoll(ev.roll)} → 回复 ${ev.amount}（剩 ${ev.hpLeft}）`];
+    case 'lifesteal':
+      return [`💚 ${sideName(ev.side)} 吸血回复 ${ev.amount}（剩 ${ev.hpLeft}）`];
 
     case 'thorns':
       return [`🛡 反弹 ${formatRoll(ev.roll)} → ${sideName(ev.to)} 受到 ${ev.dealt}（剩 ${ev.hpLeft}）`];
@@ -52,8 +52,8 @@ export function eventToLines(ev: BattleEvent): string[] {
     case 'buff':
       return [`✨ ${ev.note}`];
 
-    case 'cooldown':
-      return [];
+    case 'slot':
+      return [`🔮 ${sideName(ev.side)} 消耗法术位（剩 ${ev.left}）`];
 
     case 'end':
       return [ev.winner === null ? '⚖ 同归于尽！' : `🏁 ${sideName(ev.winner)}获胜！`];

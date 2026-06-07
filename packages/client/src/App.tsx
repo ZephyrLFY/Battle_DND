@@ -115,11 +115,22 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
   }
   return (
     <div className="action-panel">
-      <div className="ap-title">你的回合 — 选择行动</div>
+      <div className="ap-title">
+        你的回合 — 选择行动
+        <span className="ap-slots">🔮 法术位 {battle.mySlots}</span>
+      </div>
       <div className="ap-buttons">
-        {battle.actions.map((a, i) => (
-          <button key={i} className="ap-btn" onClick={() => battle.act(a)} title={tip(a)}>
-            {label(a)}
+        {battle.actions.map((opt, i) => (
+          <button
+            key={i}
+            className={`ap-btn ${opt.usable ? '' : 'disabled'}`}
+            onClick={() => opt.usable && battle.act(opt.action)}
+            disabled={!opt.usable}
+            title={tip(opt.action)}
+          >
+            {label(opt.action)}
+            {cost(opt.action) === 1 && <small className="ap-cost">🔮</small>}
+            {!opt.usable && opt.reason && <small className="ap-reason">{opt.reason}</small>}
           </button>
         ))}
       </div>
@@ -130,6 +141,9 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
 function label(a: Action): string {
   return a.kind === 'attack' ? '普通攻击' : SKILLS[a.skill].name;
 }
+function cost(a: Action): number {
+  return a.kind === 'attack' ? 0 : SKILLS[a.skill].cost;
+}
 function tip(a: Action): string {
-  return a.kind === 'attack' ? '1d6 + 力量 伤害' : SKILLS[a.skill].desc;
+  return a.kind === 'attack' ? '1d6 + 力量 伤害（命中后按 CON 吸血）' : SKILLS[a.skill].desc;
 }

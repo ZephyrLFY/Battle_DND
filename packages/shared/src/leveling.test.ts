@@ -66,14 +66,14 @@ describe('respec — 洗点', () => {
 });
 
 describe('技能学习', () => {
-  it('learnableSkills 初始为全部 8 个', () => {
-    expect(learnableSkills(newPokemon('Onix'))).toHaveLength(8);
+  it('learnableSkills 初始为全部 7 个', () => {
+    expect(learnableSkills(newPokemon('Onix'))).toHaveLength(7);
   });
 
   it('学技能后从可学列表移除', () => {
     const p = learnSkill(newPokemon('Onix'), 'brave_strike');
     expect(p.skills).toContain('brave_strike');
-    expect(learnableSkills(p)).toHaveLength(7);
+    expect(learnableSkills(p)).toHaveLength(6);
   });
 
   it('重复学 / 未知技能抛错', () => {

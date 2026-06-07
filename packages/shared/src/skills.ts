@@ -10,7 +10,6 @@
 
 export type SkillId =
   | 'brave_strike'
-  | 'life_drain'
   | 'stone_skin'
   | 'stun_strike'
   | 'flurry'
@@ -22,7 +21,6 @@ export type SkillId =
 export type SkillCategory =
   | 'attack' // 立即发起一次（强化的）攻击
   | 'multi_attack' // 本回合多次攻击
-  | 'self' // 自我增益/回复，不攻击
   | 'defense' // 防御姿态，不攻击
   | 'charge'; // 蓄力，本回合不动，强化下回合
 
@@ -30,67 +28,65 @@ export interface SkillDef {
   id: SkillId;
   name: string;
   category: SkillCategory;
-  /** 冷却回合数：放出后需要等待的本方回合数。0 = 无 CD。 */
-  cooldown: number;
+  /**
+   * 法术位消耗（BG3 风长线资源）。
+   * 0 = 戏法/小技能，可无限放；1 = 法术/大招，消耗 1 个整场不回的法术位。
+   */
+  cost: 0 | 1;
   desc: string;
 }
 
 export const SKILLS: Record<SkillId, SkillDef> = {
+  // ── 法术（消耗 1 法术位）──
   brave_strike: {
     id: 'brave_strike',
     name: '英勇打击',
     category: 'attack',
-    cooldown: 1,
+    cost: 1,
     desc: '本次攻击伤害骰 1d6→2d6，命中 +2。',
-  },
-  life_drain: {
-    id: 'life_drain',
-    name: '生命汲取',
-    category: 'self',
-    cooldown: 2,
-    desc: '本回合不攻击，回复 1d8 + CON 调整 的生命。',
-  },
-  stone_skin: {
-    id: 'stone_skin',
-    name: '石化表皮',
-    category: 'defense',
-    cooldown: 3,
-    desc: '接下来 2 回合受到的伤害减少 1d6（掷一次定减免量）。',
   },
   stun_strike: {
     id: 'stun_strike',
     name: '眩晕突袭',
     category: 'attack',
-    cooldown: 3,
+    cost: 1,
     desc: '攻击命中后，对方体质豁免(1d20+CON)<13 则下回合昏迷。',
   },
   flurry: {
     id: 'flurry',
     name: '疾风连击',
     category: 'multi_attack',
-    cooldown: 2,
+    cost: 1,
     desc: '本回合攻击 2 次（各自独立命中/伤害骰）。',
   },
   charge_smash: {
     id: 'charge_smash',
     name: '蓄力重击',
     category: 'charge',
-    cooldown: 3,
+    cost: 1,
     desc: '本回合不动，下回合攻击伤害骰 1d6→3d6 且必命中。',
   },
+  // ── 戏法（无消耗）──
   precise_aim: {
     id: 'precise_aim',
     name: '精准瞄准',
     category: 'attack',
-    cooldown: 1,
+    cost: 0,
     desc: '本次攻击以优势掷命中（2d20 取高），更易暴击。',
   },
   shield_block: {
     id: 'shield_block',
     name: '护盾格挡',
     category: 'defense',
-    cooldown: 2,
+    cost: 0,
     desc: '本回合 AC +5，并反弹 1d4 伤害给攻击者。',
+  },
+  stone_skin: {
+    id: 'stone_skin',
+    name: '石化表皮',
+    category: 'defense',
+    cost: 0,
+    desc: '接下来 2 回合受到的伤害减少 1d6（掷一次定减免量）。',
   },
 };
 
