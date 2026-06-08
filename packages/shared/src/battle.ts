@@ -20,9 +20,9 @@ import { archetypeName } from './roster.js';
 import { skillDef, type SkillId, type TargetType } from './skills.js';
 import { skillEffect } from './effects.js';
 import {
-  otherTeam,
+  otherSide,
   refEq,
-  type Team,
+  type Side,
   type FighterRef,
   type FighterRT,
   type Action,
@@ -39,7 +39,7 @@ export * from './battleTypes.js';
 // 构造
 // ─────────────────────────────────────────────────────────────────────────
 
-function mkFighter(team: Team, c: Combatant): FighterRT {
+function mkFighter(team: Side, c: Combatant): FighterRT {
   const stats = statsOf(c);
   return {
     id: c.archetypeId, // 队内不重复 → archetypeId 可直接当队内 id
@@ -134,7 +134,7 @@ export function find(state: BattleState, ref: FighterRef): FighterRT | undefined
 }
 
 /** 一方存活（未彻底死亡）的角色。 */
-export function aliveOf(state: BattleState, team: Team): FighterRT[] {
+export function aliveOf(state: BattleState, team: Side): FighterRT[] {
   return state.teams[team].filter((f) => !f.dead);
 }
 
@@ -166,13 +166,13 @@ export function allActions(state: BattleState, ref?: FighterRef): ActionOption[]
   const blocked = !isTurn || f.downed || f.stunned > 0;
   const blockReason = !isTurn ? '等待回合' : f.downed ? '倒地' : f.stunned > 0 ? '昏迷中' : undefined;
 
-  const enemies = aliveOf(state, otherTeam(f.team)).filter((e) => !e.downed);
+  const enemies = aliveOf(state, otherSide(f.team)).filter((e) => !e.downed);
   const defaultEnemy = enemies[0];
 
   const opts: ActionOption[] = [];
   // 普攻：固定单敌
   opts.push({
-    action: { kind: 'attack', target: defaultEnemy ? refOf(defaultEnemy) : { team: otherTeam(f.team), id: '' } },
+    action: { kind: 'attack', target: defaultEnemy ? refOf(defaultEnemy) : { team: otherSide(f.team), id: '' } },
     usable: !blocked && !!defaultEnemy,
     reason: blockReason ?? (!defaultEnemy ? '无可攻击目标' : undefined),
   });
@@ -195,7 +195,7 @@ export function defaultTargets(
   actor: FighterRT,
   tt: TargetType,
 ): FighterRef[] {
-  const enemies = aliveOf(state, otherTeam(actor.team)).filter((e) => !e.downed);
+  const enemies = aliveOf(state, otherSide(actor.team)).filter((e) => !e.downed);
   const allies = aliveOf(state, actor.team);
   const downedAllies = allies.filter((a) => a.downed);
   switch (tt) {
@@ -217,7 +217,7 @@ export function defaultTargets(
 
 /** 合法目标集合（UI 选目标时高亮用）。 */
 export function legalTargets(state: BattleState, actor: FighterRT, tt: TargetType): FighterRef[] {
-  const enemies = aliveOf(state, otherTeam(actor.team)).filter((e) => !e.downed);
+  const enemies = aliveOf(state, otherSide(actor.team)).filter((e) => !e.downed);
   const allies = aliveOf(state, actor.team);
   switch (tt) {
     case 'self':
@@ -294,7 +294,7 @@ function validate(state: BattleState, actor: FighterRT, action: Action): Action 
   if (action.kind === 'attack') {
     const t = find(state, action.target);
     if (t && !t.dead && !t.downed && t.team !== actor.team) return action;
-    const e = aliveOf(state, otherTeam(actor.team)).find((x) => !x.downed);
+    const e = aliveOf(state, otherSide(actor.team)).find((x) => !x.downed);
     return e ? { kind: 'attack', target: refOf(e) } : action;
   }
   // skill
@@ -302,7 +302,7 @@ function validate(state: BattleState, actor: FighterRT, action: Action): Action 
   const enough = actor.slots >= skillDef(action.skill).cost;
   if (learned && enough) return action;
   // 回退普攻
-  const e = aliveOf(state, otherTeam(actor.team)).find((x) => !x.downed);
+  const e = aliveOf(state, otherSide(actor.team)).find((x) => !x.downed);
   return e ? { kind: 'attack', target: refOf(e) } : action;
 }
 
@@ -381,7 +381,9 @@ function doAttack(
 
   let dmgSpec = mods.charged ? '3d6' : mods.brave ? '2d6' : '1d6';
   if (crit) dmgSpec = doubleDice(dmgSpec);
-  const dmgRoll = roll(rng, dmgSpec, actor.stats.dmgBonus);
+  // AOE：固定骰、不加 STR 伤害调整（范围技能较轻）
+  const dmgBonus = mods.aoe ? 0 : actor.stats.dmgBonus;
+  const dmgRoll = roll(rng, dmgSpec, dmgBonus);
 
   let raw = Math.max(0, dmgRoll.total);
   let mitigated = 0;
@@ -392,8 +394,8 @@ function doAttack(
   target.hp = Math.max(0, target.hp - raw);
   emit({ t: 'damage', to: refOf(target), roll: dmgRoll, mitigated, dealt: raw, hpLeft: target.hp });
 
-  // CON 被动吸血（命中造成伤害才回）
-  if (raw > 0 && actor.stats.lifestealRate > 0 && !actor.downed && !actor.dead) {
+  // CON 被动吸血（命中造成伤害才回；AOE 不触发，避免群体吸血过强）
+  if (!mods.aoe && raw > 0 && actor.stats.lifestealRate > 0 && !actor.downed && !actor.dead) {
     const heal = Math.floor(raw * actor.stats.lifestealRate);
     if (heal > 0) {
       const before = actor.hp;

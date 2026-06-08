@@ -66,6 +66,35 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     ctx.actor.stoneAmount = r.total;
     ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `石化：2 回合内减伤 ${r.total}` });
   },
+
+  // —— 团队技能（3v3）——
+  heal: (ctx) => {
+    const t = first(ctx);
+    if (!t || t.dead || t.downed) return; // 治疗不能作用于阵亡/倒地（复活才行）
+    const r = roll(ctx.rng, '2d4', t.stats.conMod);
+    ctx.heal(t, r.total, r);
+  },
+  revive: (ctx) => {
+    const t = first(ctx);
+    if (!t || t.dead || !t.downed) return; // 仅对倒地者生效
+    const r = roll(ctx.rng, '1d8');
+    t.downed = false;
+    t.hp = Math.min(t.stats.maxHp, Math.max(1, r.total));
+    ctx.emit({ t: 'revive', who: ref(t), hpLeft: t.hp });
+  },
+  firestorm: (ctx) => {
+    // AOE：对每个目标各发起一次"固伤命中"——这里走共享攻击管线（命中+1d6）
+    for (const t of ctx.targets) {
+      if (!t.dead && !t.downed) ctx.attack(t, { aoe: true });
+    }
+  },
+  war_cry: (ctx) => {
+    // 全体友方下 1 回合命中 +2
+    for (const t of ctx.targets) {
+      if (!t.dead) t.rallyTurns = 2; // 2 因本方回合开始会先衰减 1
+    }
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '战吼！全体友方下回合命中 +2' });
+  },
 };
 
 export function skillEffect(id: SkillId): SkillEffect {

@@ -6,12 +6,12 @@
 import type { DerivedStats } from './combatant.js';
 import type { SkillId } from './skills.js';
 
-export type Team = 'a' | 'b';
-export const otherTeam = (t: Team): Team => (t === 'a' ? 'b' : 'a');
+export type Side = 'a' | 'b';
+export const otherSide = (t: Side): Side => (t === 'a' ? 'b' : 'a');
 
 /** 战斗中引用某个角色的稳定标识。 */
 export interface FighterRef {
-  team: Team;
+  team: Side;
   id: string;
 }
 
@@ -22,7 +22,7 @@ export function refEq(x: FighterRef, y: FighterRef): boolean {
 /** 战斗中一个角色的临场可变状态。 */
 export interface FighterRT {
   id: string; // 队内唯一（archetypeId，队内不重复 → 可直接当 id）
-  team: Team;
+  team: Side;
   archetypeId: string;
   name: string;
   level: number;
@@ -68,7 +68,7 @@ export interface BattleState {
   round: number;
   rngCursor: number;
   /** 结束时的胜方；进行中为 undefined。null = 平局（双方全灭）。 */
-  winner?: Team | null;
+  winner?: Side | null;
 }
 
 // ─── 事件流（前端回放/日志用，带骰子明细）───
@@ -108,7 +108,7 @@ export type BattleEvent =
   | { t: 'downed'; who: FighterRef }
   | { t: 'revive'; who: FighterRef; hpLeft: number }
   | { t: 'dead'; who: FighterRef }
-  | { t: 'end'; winner: Team | null };
+  | { t: 'end'; winner: Side | null };
 
 /**
  * 技能效果 handler 的执行上下文。
@@ -132,5 +132,7 @@ export interface AttackMods {
   brave?: boolean; // 英勇打击：命中+2，伤害骰翻倍
   advantage?: boolean; // 精准瞄准：优势命中
   charged?: boolean; // 蓄力重击：必中，伤害骰 1d6→3d6
+  /** AOE：固定 1d6、不加 STR 伤害调整（范围技能较轻）。 */
+  aoe?: boolean;
   extraHitBonus?: number;
 }

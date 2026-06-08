@@ -70,14 +70,14 @@ describe('respec — 洗点', () => {
 });
 
 describe('技能学习', () => {
-  it('learnableSkills 初始为全部 7 个（未学过的）', () => {
-    expect(learnableSkills(newCombatant('Onix'))).toHaveLength(7);
+  it('learnableSkills 初始为全部 11 个（未学过的）', () => {
+    expect(learnableSkills(newCombatant('Onix'))).toHaveLength(11);
   });
 
   it('Lv1 戏法可学；学后从可学列表移除', () => {
     const p = learnSkill(newCombatant('Onix'), 'shield_block'); // 戏法 Lv1
     expect(p.skills).toContain('shield_block');
-    expect(learnableSkills(p)).toHaveLength(6);
+    expect(learnableSkills(p)).toHaveLength(10);
   });
 
   it('未达解锁等级不可学', () => {

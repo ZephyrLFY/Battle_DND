@@ -6,4 +6,5 @@ export * from './skills.js';
 export * from './effects.js';
 export * from './battle.js';
 export * from './leveling.js';
+export * from './team.js';
 export * from './ai.js';

@@ -190,3 +190,93 @@ function firstTurnOf(a: Combatant, b: Combatant, team: 'a' | 'b'): BattleState {
   }
   throw new Error('找不到让该队先手的种子');
 }
+
+// ─────────────────────────────── 3v3 ───────────────────────────────
+
+import { chooseAction } from './ai.js';
+
+const TEAM_A: Combatant[] = [mk('Hitmonlee', 10), mk('Onix', 10), mk('Pikachu', 10)];
+const TEAM_B: Combatant[] = [mk('Charmander', 10), mk('Muk', 10), mk('Krabby', 10)];
+
+/** 双方都用随机 AI 跑完整场 3v3。 */
+function auto3v3(seed: number) {
+  let { state, events } = createBattle(TEAM_A, TEAM_B, seed);
+  const all = [...events];
+  let guard = 0;
+  while (!isOver(state) && guard++ < 5000) {
+    const r = applyAction(state, chooseAction(state, seed * 31 + guard));
+    state = r.state;
+    all.push(...r.events);
+  }
+  return { state, events: all, turns: guard };
+}
+
+describe('3v3 对局', () => {
+  it('start 的 order 覆盖全部 6 个角色', () => {
+    const { events } = createBattle(TEAM_A, TEAM_B, 1);
+    const start = events[0];
+    expect(start?.t).toBe('start');
+    if (start?.t === 'start') {
+      expect(start.order).toHaveLength(6);
+      expect(start.fighters).toHaveLength(6);
+    }
+  });
+
+  it('随机 AI 对打能收敛分出胜负，不触发安全上限', () => {
+    const { state, turns } = auto3v3(7);
+    expect(isOver(state)).toBe(true);
+    expect(turns).toBeLessThan(5000);
+    expect(state.winner === 'a' || state.winner === 'b' || state.winner === null).toBe(true);
+  });
+
+  it('结束时至少一方全员阵亡', () => {
+    const { state } = auto3v3(13);
+    const aAllDead = state.teams.a.every((f) => f.dead);
+    const bAllDead = state.teams.b.every((f) => f.dead);
+    expect(aAllDead || bAllDead).toBe(true);
+  });
+
+  it('确定性：相同种子同样的 3v3 过程', () => {
+    expect(auto3v3(42).events).toEqual(auto3v3(42).events);
+  });
+});
+
+describe('AOE / 团队技能', () => {
+  it('烈焰风暴一次命中多个敌人（产生多条 hit/damage）', () => {
+    const caster: Combatant[] = [mk('Charmander', 10, ['firestorm'])];
+    const enemies = TEAM_B;
+    let st = createBattle(caster, enemies, 0).state;
+    // 试种子直到我方(a)先手
+    for (let seed = 0; seed < 200 && currentFighter(st)?.team !== 'a'; seed++) {
+      st = createBattle(caster, enemies, seed).state;
+    }
+    expect(currentFighter(st)?.team).toBe('a');
+    const fire = allActions(st).find(
+      (o) => o.action.kind === 'skill' && o.action.skill === 'firestorm',
+    )!;
+    const r = applyAction(st, fire.action);
+    const hits = r.events.filter((e) => e.t === 'hit');
+    expect(hits.length).toBeGreaterThanOrEqual(2); // 命中多个敌人
+  });
+
+  it('治疗术回复友方生命', () => {
+    const allies: Combatant[] = [mk('Licktung', 10, ['heal']), mk('Onix', 10)];
+    let st = createBattle(allies, [mk('Pikachu', 1)], 0).state;
+    for (let seed = 0; seed < 200 && currentFighter(st)?.id !== 'Licktung'; seed++) {
+      st = createBattle(allies, [mk('Pikachu', 1)], seed).state;
+    }
+    // 压低队友血量
+    const ally = find(st, { team: 'a', id: 'Onix' })!;
+    ally.hp = 5;
+    const healOpt = allActions(st).find(
+      (o) => o.action.kind === 'skill' && o.action.skill === 'heal',
+    );
+    // 让治疗目标指向受伤的 Onix
+    if (healOpt && healOpt.action.kind === 'skill') {
+      const r = applyAction(st, { kind: 'skill', skill: 'heal', targets: [{ team: 'a', id: 'Onix' }] });
+      const heal = r.events.find((e) => e.t === 'heal');
+      expect(heal?.t).toBe('heal');
+      if (heal?.t === 'heal') expect(heal.hpLeft).toBeGreaterThan(5);
+    }
+  });
+});

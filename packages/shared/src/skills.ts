@@ -16,14 +16,21 @@ export type SkillId =
   | 'flurry'
   | 'charge_smash'
   | 'precise_aim'
-  | 'shield_block';
+  | 'shield_block'
+  // 团队技能（3v3）
+  | 'heal'
+  | 'revive'
+  | 'firestorm'
+  | 'war_cry';
 
 /** 技能在战斗中的行为类别（影响"放技能这一步该怎么走"）。 */
 export type SkillCategory =
   | 'attack' // 立即发起一次（强化的）攻击
   | 'multi_attack' // 本回合多次攻击
   | 'defense' // 防御姿态，不攻击
-  | 'charge'; // 蓄力，本回合不动，强化下回合
+  | 'charge' // 蓄力，本回合不动，强化下回合
+  | 'support' // 辅助：治疗/复活/增益，不攻击
+  | 'aoe'; // 范围攻击
 
 /** 技能的作用目标类型（决定 UI 怎么选目标、引擎怎么收集 targets）。 */
 export type TargetType =
@@ -120,6 +127,44 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     cost: 3,
     unlockLevel: 11,
     desc: '本回合不动，下回合攻击伤害骰 1d6→3d6 且必命中。',
+  },
+
+  // ── 团队技能（3v3）──
+  heal: {
+    id: 'heal',
+    name: '治疗术',
+    category: 'support',
+    targetType: 'one_ally',
+    cost: 1,
+    unlockLevel: 3,
+    desc: '回复一个友方 2d4 + CON 调整 的生命（不能作用于阵亡者）。',
+  },
+  war_cry: {
+    id: 'war_cry',
+    name: '战吼',
+    category: 'support',
+    targetType: 'all_allies',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '全体友方接下来 1 回合内攻击命中 +2。',
+  },
+  firestorm: {
+    id: 'firestorm',
+    name: '烈焰风暴',
+    category: 'aoe',
+    targetType: 'all_enemies',
+    cost: 2,
+    unlockLevel: 8,
+    desc: '对全体敌方各掷命中 + 1d6 伤害（AOE）。',
+  },
+  revive: {
+    id: 'revive',
+    name: '复活术',
+    category: 'support',
+    targetType: 'one_ally',
+    cost: 3,
+    unlockLevel: 11,
+    desc: '拉起一个倒地友方，回复其 1d8 生命（仅对倒地者生效）。',
   },
 };
 
