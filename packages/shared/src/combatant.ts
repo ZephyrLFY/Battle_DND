@@ -55,7 +55,7 @@ export interface DerivedStats {
   dmgBonus: number; // 伤害调整 = STR_mod
   maxHp: number; // (8 + CON_mod) * level，下限每级至少 1
   initiative: number; // 先攻调整 = DEX_mod
-  maxSlots: number; // 法术位（整场可施放大招的次数）= 1 + floor(level/4)
+  maxEnergy: number; // 能量上限（从 0 起、普攻 +1、技能消耗）= 3 + floor(level/4)
   lifestealRate: number; // 吸血比例（0~0.25）= max(0, CON_mod) * 5%
   strMod: number;
   dexMod: number;
@@ -77,7 +77,7 @@ export function deriveStats(ab: Abilities, level: number): DerivedStats {
     dmgBonus: strMod,
     maxHp: perLevelHp * lvl,
     initiative: dexMod,
-    maxSlots: 1 + Math.floor(lvl / 4),
+    maxEnergy: 3 + Math.floor(lvl / 4),
     lifestealRate: Math.max(0, conMod) * 0.05,
     strMod,
     dexMod,

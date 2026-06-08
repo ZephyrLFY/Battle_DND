@@ -52,13 +52,15 @@ export function App() {
             onPickTarget={battle.chooseTarget}
           />
           <ActionPanel battle={battle} />
-          {battle.finished && (
-            <div
-              className={`verdict ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}
-            >
-              {battle.winner === 'a' ? '🎉 你的队伍获胜！' : battle.winner === 'b' ? '💀 你的队伍落败' : '⚖ 双方全灭'}
-            </div>
-          )}
+          <div className={`verdict ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}>
+            {battle.finished
+              ? battle.winner === 'a'
+                ? '🎉 你的队伍获胜！'
+                : battle.winner === 'b'
+                  ? '💀 你的队伍落败'
+                  : '⚖ 双方全灭'
+              : ' '}
+          </div>
           <div className="controls">
             <button onClick={() => setPhase('build')}>← 回到配置</button>
             <button className="fight" onClick={onStart}>
@@ -119,7 +121,7 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
     <div className="action-panel">
       <div className="ap-title">
         {battle.auto ? '自动战斗中…' : actorName ? `${actorName} 的回合` : '你的回合'}
-        <span className="ap-slots">🔮 法术位 {battle.mySlots}</span>
+        <span className="ap-slots">⚡ 能量 {battle.myEnergy}</span>
       </div>
       <div className="ap-buttons">
         {battle.actions.map((opt, i) => (
@@ -131,7 +133,7 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
             title={tip(opt.action)}
           >
             {label(opt.action)}
-            {cost(opt.action) > 0 && <small className="ap-cost">🔮×{cost(opt.action)}</small>}
+            {cost(opt.action) > 0 && <small className="ap-cost">⚡×{cost(opt.action)}</small>}
             {!waiting && !opt.usable && opt.reason && <small className="ap-reason">{opt.reason}</small>}
           </button>
         ))}

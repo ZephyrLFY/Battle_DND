@@ -26,8 +26,9 @@ export function eventToLines(ev: BattleEvent): string[] {
       return [`✦ ${who(ev.who)} 使出【${ev.skillName ?? ev.action.skill}】`];
     }
 
-    case 'slot':
-      return [`🔮 ${who(ev.who)} 消耗法术位（剩 ${ev.left}）`];
+    case 'energy':
+      // 只在消耗（放技能）时记日志；普攻 +1 攒能量不刷屏
+      return ev.spent ? [`⚡ ${who(ev.who)} 消耗 ${-ev.delta} 能量（剩 ${ev.now}）`] : [];
 
     case 'hit': {
       const r = ev.roll;

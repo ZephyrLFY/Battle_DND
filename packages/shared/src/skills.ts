@@ -97,7 +97,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 1,
     unlockLevel: 3,
-    desc: '本次攻击伤害骰 1d6→2d6，命中 +2。',
+    desc: '本次攻击伤害骰 1d6→3d6，命中 +2。',
   },
   // ── 中阶法术（Lv6/8，cost 2）──
   stun_strike: {
@@ -126,7 +126,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 3,
     unlockLevel: 11,
-    desc: '本回合不动，下回合攻击伤害骰 1d6→3d6 且必命中。',
+    desc: '本回合不动，下回合攻击伤害骰 1d6→4d6 且必命中。',
   },
 
   // ── 团队技能（3v3）──
@@ -135,9 +135,9 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     name: '治疗术',
     category: 'support',
     targetType: 'one_ally',
-    cost: 1,
+    cost: 2,
     unlockLevel: 3,
-    desc: '回复一个友方 2d4 + CON 调整 的生命（不能作用于阵亡者）。',
+    desc: '回复一个友方 2d4 + CON 调整 的生命（消耗 2 能量，不能作用于阵亡者）。',
   },
   war_cry: {
     id: 'war_cry',
@@ -155,7 +155,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'all_enemies',
     cost: 2,
     unlockLevel: 8,
-    desc: '对全体敌方各掷命中 + 1d6 伤害（AOE）。',
+    desc: '对全体敌方各掷命中 + 2d6 伤害（AOE）。',
   },
   revive: {
     id: 'revive',
