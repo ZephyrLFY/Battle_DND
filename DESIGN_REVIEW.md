@@ -2,7 +2,16 @@
 
 > 背景：需求迭代了多轮（自动战斗 → D&D 回合制 → BG3 法术位 → 技能栏上限）。
 > 这是一次主动暂停，目的：① 审视当前框架，找出不合理/非业界最佳实践处；② 整理 backlog。
-> **本文不改代码**，只盘点。盘点结论决定后续重构的优先级。
+
+> **进度更新（2026-06-08）**：第二节 7 条不合理处，已在 NvN/3v3 重构中清掉 5 条：
+> - ✅ P0 技能插件化（effects.ts 注册式 handler）
+> - ✅ P0 去 Pokemon 化（Combatant/archetypeId/roster.ts）
+> - ✅ P1 敌人生成挪进 shared（team.ts 的 generateEnemyTeam）
+> - ✅ P2 表现层颜色移出 shared（client/presentation.ts）
+> - ✅ P1 abilities 改"天赋 + allocations 两段存储"（洗点清零、不反推）
+>
+> **剩余 2 条均为未来功能前置，现在做无意义**：协议层/server 包（联机 PvP 时建）、
+> client 测试（UI 仍在快速变）。即"框架债"已基本清空。
 
 ---
 

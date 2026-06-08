@@ -86,33 +86,51 @@ export function deriveStats(ab: Abilities, level: number): DerivedStats {
   };
 }
 
-/** 一个角色实例（可序列化：存库 / 上线传输 / 战斗输入）。 */
+/**
+ * 一个角色实例（可序列化：存库 / 上线传输 / 战斗输入）。
+ *
+ * 属性分两段存：天赋（来自 roster，不存）+ 玩家分配的 allocations（存）。
+ * 当前属性 = abilitiesOf(c) = 天赋 + allocations。这样存档稳健、洗点干净
+ * （清空 allocations 即可，不依赖"当前−天赋"反推），天赋表调整也不影响已分配点。
+ */
 export interface Combatant {
   /** 指向 roster 的角色原型 id。 */
   archetypeId: string;
   level: number;
   exp: number;
-  /** 当前属性 = 天赋 + 已分配点（已合并好的最终值）。 */
-  abilities: Abilities;
+  /** 玩家往三属性各加的点（默认全 0）。最终属性 = 天赋 + 此项。 */
+  allocations: Abilities;
   /** 已学技能 id 列表（见 skills.ts）。 */
   skills: SkillId[];
 }
 
+const ZERO_ALLOC: Abilities = { str: 0, dex: 0, con: 0 };
+
 /** 用天赋起点 new 一个 1 级角色（未加点、未学技能）。 */
 export function newCombatant(archetypeId: string): Combatant {
-  const a: Archetype = archetype(archetypeId);
+  archetype(archetypeId); // 校验存在
   return {
     archetypeId,
     level: 1,
     exp: 0,
-    abilities: { ...a.talent },
+    allocations: { ...ZERO_ALLOC },
     skills: [],
+  };
+}
+
+/** 当前属性 = 天赋 + 已分配点。 */
+export function abilitiesOf(c: Combatant): Abilities {
+  const t: Archetype = archetype(c.archetypeId);
+  return {
+    str: t.talent.str + c.allocations.str,
+    dex: t.talent.dex + c.allocations.dex,
+    con: t.talent.con + c.allocations.con,
   };
 }
 
 /** 取一个角色的派生战斗数值。 */
 export function statsOf(c: Combatant): DerivedStats {
-  return deriveStats(c.abilities, c.level);
+  return deriveStats(abilitiesOf(c), c.level);
 }
 
 /** 取角色展示名（便捷转发）。 */

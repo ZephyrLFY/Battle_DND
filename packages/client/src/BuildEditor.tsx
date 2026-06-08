@@ -10,6 +10,7 @@ import {
   MAX_EQUIPPED_SKILLS,
   newCombatant,
   statsOf,
+  abilitiesOf,
   allocate,
   respec,
   availablePoints,
@@ -31,6 +32,7 @@ export function BuildEditor({
   onChange: (p: Combatant) => void;
 }) {
   const stats = statsOf(poke);
+  const abil = abilitiesOf(poke);
   const pts = availablePoints(poke);
   const learnable = learnableSkills(poke);
 
@@ -68,9 +70,9 @@ export function BuildEditor({
           <AbilityRow
             key={k}
             akey={k}
-            value={poke.abilities[k]}
-            canAdd={pts > 0 && poke.abilities[k] < 20}
-            canSub={poke.abilities[k] > newCombatant(poke.archetypeId).abilities[k]}
+            value={abil[k]}
+            canAdd={pts > 0 && abil[k] < 20}
+            canSub={poke.allocations[k] > 0}
             onAdd={() => onChange(allocate(poke, k, 1))}
             onSub={() => onChange(allocate(poke, k, -1))}
           />

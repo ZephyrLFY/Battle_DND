@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newCombatant } from './combatant.js';
+import { newCombatant, abilitiesOf } from './combatant.js';
 import {
   totalPoints,
   spentPoints,
@@ -34,7 +34,8 @@ describe('allocate — 加点', () => {
   it('加点消耗可用点、提升属性', () => {
     const p = { ...newCombatant('Onix'), level: 3 }; // 4 点可用
     const p2 = allocate(p, 'str', 2);
-    expect(p2.abilities.str).toBe(p.abilities.str + 2);
+    expect(abilitiesOf(p2).str).toBe(abilitiesOf(p).str + 2);
+    expect(p2.allocations.str).toBe(2);
     expect(availablePoints(p2)).toBe(availablePoints(p) - 2);
   });
 
@@ -63,7 +64,8 @@ describe('respec — 洗点', () => {
     expect(spentPoints(p)).toBe(4);
     const r = respec(p);
     expect(spentPoints(r)).toBe(0);
-    expect(r.abilities).toEqual(newCombatant('Pikachu').abilities);
+    expect(r.allocations).toEqual({ str: 0, dex: 0, con: 0 });
+    expect(abilitiesOf(r)).toEqual(abilitiesOf(newCombatant('Pikachu')));
     expect(r.level).toBe(8);
     expect(r.skills).toEqual(['flurry']);
   });

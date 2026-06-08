@@ -5,6 +5,7 @@ import {
   deriveStats,
   newCombatant,
   statsOf,
+  abilitiesOf,
   MAX_LEVEL,
   expToLevelUp,
   expGainFor,
@@ -85,7 +86,9 @@ describe('newCombatant / statsOf', () => {
   it('新角色 1 级、0 经验、属性=天赋、无技能', () => {
     const c = newCombatant('Pikachu');
     expect(c).toMatchObject({ archetypeId: 'Pikachu', level: 1, exp: 0, skills: [] });
-    expect(c.abilities).toEqual(ROSTER['Pikachu']!.talent);
+    expect(c.allocations).toEqual({ str: 0, dex: 0, con: 0 });
+    // 当前属性 = 天赋（未加点）
+    expect(abilitiesOf(c)).toEqual(ROSTER['Pikachu']!.talent);
   });
 
   it('Pikachu（高DEX）AC 高于 Muk（低DEX）', () => {

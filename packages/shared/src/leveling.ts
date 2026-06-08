@@ -1,15 +1,16 @@
 /**
  * 养成系统 —— 升级、加点、洗点、选技能。
  *
- * 模型：Combatant.abilities 存的是"天赋 + 已分配点"的最终值。
- * 可分配总点数由等级推出（每升一级 +POINTS_PER_LEVEL）；已分配点 = 当前属性 − 天赋之和。
- * 洗点 = 把属性重置回天赋，剩余点全部退回待分配。
+ * 模型：Combatant 存 allocations（玩家往三属性各加的点）；当前属性 = 天赋 + allocations。
+ * 可分配总点数由等级推出（每升一级 +POINTS_PER_LEVEL）；已花点数 = allocations 之和。
+ * 洗点 = 清空 allocations（不依赖反推，存档稳健）。
  */
 import {
   POINTS_PER_LEVEL,
   MAX_ABILITY,
   MAX_LEVEL,
   expToLevelUp,
+  abilitiesOf,
   type Abilities,
   type AbilityKey,
   type Combatant,
@@ -28,12 +29,9 @@ export function totalPoints(level: number): number {
   return Math.max(0, (Math.min(level, MAX_LEVEL) - 1) * POINTS_PER_LEVEL);
 }
 
-/** 已花掉的点 = 当前属性总和 − 天赋总和。 */
+/** 已花掉的点 = allocations 三项之和。 */
 export function spentPoints(c: Combatant): number {
-  const t = talentOf(c.archetypeId);
-  const cur = c.abilities.str + c.abilities.dex + c.abilities.con;
-  const base = t.str + t.dex + t.con;
-  return cur - base;
+  return c.allocations.str + c.allocations.dex + c.allocations.con;
 }
 
 /** 剩余可分配点。 */
@@ -46,23 +44,23 @@ function talentOf(archetypeId: string): Abilities {
 }
 
 /**
- * 给某个属性加 n 点（默认 1）。校验：有足够剩余点、不超过属性上限、不低于天赋值。
- * 返回新实例（不修改入参）。n 可为负（仅用于撤销，下限是天赋值）。
+ * 给某个属性加 n 点（默认 1）。校验：有足够剩余点、不超过属性上限、分配不为负。
+ * 返回新实例（不修改入参）。n 可为负（仅用于撤销，allocations 下限是 0）。
  */
 export function allocate(c: Combatant, key: AbilityKey, n = 1): Combatant {
   const t = talentOf(c.archetypeId);
   if (n > 0 && availablePoints(c) < n) {
     throw new Error('属性点不足');
   }
-  const nextVal = c.abilities[key] + n;
-  if (nextVal > MAX_ABILITY) throw new Error(`${key} 超过上限 ${MAX_ABILITY}`);
-  if (nextVal < t[key]) throw new Error(`${key} 不能低于天赋值 ${t[key]}`);
-  return { ...c, abilities: { ...c.abilities, [key]: nextVal } };
+  const nextAlloc = c.allocations[key] + n;
+  if (nextAlloc < 0) throw new Error(`${key} 分配不能为负`);
+  if (t[key] + nextAlloc > MAX_ABILITY) throw new Error(`${key} 超过上限 ${MAX_ABILITY}`);
+  return { ...c, allocations: { ...c.allocations, [key]: nextAlloc } };
 }
 
-/** 洗点：属性重置回天赋，所有已分配点退回（等级/经验/技能不变）。 */
+/** 洗点：清空 allocations，所有已分配点退回（等级/经验/技能不变）。 */
 export function respec(c: Combatant): Combatant {
-  return { ...c, abilities: { ...talentOf(c.archetypeId) } };
+  return { ...c, allocations: { str: 0, dex: 0, con: 0 } };
 }
 
 /** 技能栏是否已满（最多 MAX_EQUIPPED_SKILLS 个）。 */
