@@ -39,7 +39,7 @@ export interface UseBattle {
   log: string[];
   myTurn: boolean;
   actions: ActionOption[];
-  mySlots: number;
+  myEnergy: number;
   finished: boolean;
   winner: 'a' | 'b' | null;
   auto: boolean;
@@ -166,11 +166,11 @@ export function useBattle(): UseBattle {
   const cur = state ? currentFighter(state) : undefined;
   const myTurn = !!state && !finished && cur?.team === 'a' && !auto;
   const actions = state && !finished && cur?.team === 'a' ? allActions(state, { team: 'a', id: cur.id }) : [];
-  const mySlots = cur?.team === 'a' ? cur.slots : (state?.teams.a.find((f) => !f.dead)?.slots ?? 0);
+  const myEnergy = cur?.team === 'a' ? cur.energy : (state?.teams.a.find((f) => !f.dead)?.energy ?? 0);
   const winner = (state?.winner ?? null) as 'a' | 'b' | null;
 
   return {
-    state, log, myTurn, actions, mySlots, finished, winner, auto, pending,
+    state, log, myTurn, actions, myEnergy, finished, winner, auto, pending,
     start, choose, chooseTarget, cancelPending, setAuto,
   };
 }

@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react';
 import {
   currentFighter,
+  find,
   type BattleState,
   type FighterRT,
   type FighterRef,
 } from '@battle-pokemon/shared';
 import { fighterColor } from './presentation.js';
 
-const W = 600;
-const H = 340;
+const W = 880;
+const H = 440;
+const INIT_BAR_H = 56; // 顶部先攻条高度
 
 interface Slot {
   f: FighterRT;
@@ -17,9 +19,10 @@ interface Slot {
 }
 
 /**
- * Canvas 3v3 对战舞台。每队 3 个角色竖排（左=我方 a，右=敌方 b）。
- * 当前行动者高亮；倒地半透明；阵亡画叉。
- * 选目标阶段：合法目标加金框，点击触发 onPickTarget。
+ * Canvas 3v3 对战舞台。
+ * - 顶部：先攻顺序条（头像缩略图，当前行动者高亮）。
+ * - 中部：两队各 3 个角色，竖排 + 左右错位（zigzag），血条/名字不重叠。
+ * - 倒地半透明、阵亡画叉；选目标阶段合法目标加金框可点。
  */
 export function BattleStage({
   state,
@@ -50,20 +53,28 @@ export function BattleStage({
     const cur = state.winner === undefined ? currentFighter(state) : undefined;
     const candKeys = new Set((candidates ?? []).map((r) => `${r.team}:${r.id}`));
 
-    const layoutTeam = (team: 'a' | 'b', x: number) => {
+    drawInitiativeBar(ctx, state, cur);
+
+    // 中部布局：每队 3 人竖排，错位（外侧/内侧交替）
+    const areaTop = INIT_BAR_H + 40;
+    const areaBottom = H - 30;
+    const gap = (areaBottom - areaTop) / 3;
+    const layoutTeam = (team: 'a' | 'b') => {
       const fs = state.teams[team];
-      const gap = 96;
-      const top = H / 2 - ((fs.length - 1) * gap) / 2;
       fs.forEach((f, i) => {
-        const y = top + i * gap;
+        const y = areaTop + gap * i + gap / 2;
+        // 错位：左队基准靠左、右队镜像；奇数行往内缩一大截（zigzag 幅度加大）
+        const baseX = team === 'a' ? 130 : W - 130;
+        const inward = team === 'a' ? 1 : -1;
+        const x = baseX + (i % 2 === 1 ? inward * 120 : 0);
         slotsRef.current.push({ f, x, y });
         const active = cur?.id === f.id && cur?.team === f.team;
         const isCand = candKeys.has(`${f.team}:${f.id}`);
         drawFighter(ctx, f, x, y, team === 'a' ? 'left' : 'right', active, isCand);
       });
     };
-    layoutTeam('a', 130);
-    layoutTeam('b', W - 130);
+    layoutTeam('a');
+    layoutTeam('b');
   }, [state, candidates]);
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -99,6 +110,56 @@ function drawBackground(ctx: CanvasRenderingContext2D) {
   g.addColorStop(1, '#1a2233');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
+  // 先攻条背景
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(0, 0, W, INIT_BAR_H);
+}
+
+/** 顶部先攻顺序条：按 state.order 画小头像，当前行动者高亮。 */
+function drawInitiativeBar(
+  ctx: CanvasRenderingContext2D,
+  state: BattleState,
+  cur: FighterRT | undefined,
+) {
+  const order = state.order;
+  ctx.fillStyle = '#8b98ad';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('先攻顺序 ▶', 10, 16);
+
+  const startX = 92;
+  const r = 15;
+  const step = Math.min(54, (W - startX - 16) / Math.max(1, order.length));
+  order.forEach((ref, i) => {
+    const f = find(state, ref);
+    if (!f) return;
+    const x = startX + step * i + r;
+    const y = INIT_BAR_H / 2 + 4;
+    const isCur = cur && cur.id === f.id && cur.team === f.team;
+
+    if (isCur) {
+      ctx.strokeStyle = '#f0c33c';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = f.downed ? 0.45 : 1;
+    ctx.fillStyle = fighterColor(f);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // 队伍色边（我方绿描边、敌方红描边）
+    ctx.strokeStyle = f.team === 'a' ? '#6fe08a' : '#ff8b8b';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // 名字首字母
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.name.slice(0, 2), x, y + 4);
+  });
 }
 
 function drawFighter(
@@ -110,10 +171,9 @@ function drawFighter(
   active: boolean,
   candidate: boolean,
 ) {
-  const r = 34;
+  const r = 30;
   const color = fighterColor(f);
 
-  // 候选目标金框
   if (candidate) {
     ctx.strokeStyle = '#ffd24a';
     ctx.lineWidth = 3;
@@ -140,35 +200,34 @@ function drawFighter(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // 朝向三角
   if (!f.dead && !f.downed) {
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath();
     const tx = facing === 'left' ? cx + r - 6 : cx - r + 6;
-    ctx.moveTo(tx, cy - 6);
-    ctx.lineTo(tx, cy + 6);
-    ctx.lineTo(facing === 'left' ? tx + 10 : tx - 10, cy);
+    ctx.moveTo(tx, cy - 5);
+    ctx.lineTo(tx, cy + 5);
+    ctx.lineTo(facing === 'left' ? tx + 9 : tx - 9, cy);
     ctx.closePath();
     ctx.fill();
   }
   ctx.globalAlpha = 1;
 
-  // 状态图标
   const badge = f.dead ? '☠' : f.downed ? '⬇' : f.stunned > 0 ? '💫' : '';
   if (badge) {
-    ctx.font = '18px sans-serif';
+    ctx.font = '16px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.fillText(badge, cx, cy - r - 6);
+    ctx.fillText(badge, cx, cy - r - 4);
   }
 
-  // 名字 + 等级
+  // 名字 + 等级（画在圆下方）
   ctx.fillStyle = f.dead ? '#777' : '#fff';
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(`${f.name} Lv${f.level}`, cx, cy + r + 16);
 
-  if (!f.dead) drawHpBar(ctx, cx - 38, cy - r - 22, f.hp, f.stats.maxHp);
+  // HP 条画在圆上方（与名字分两侧，不重叠）
+  if (!f.dead) drawHpBar(ctx, cx - 38, cy - r - 16, f.hp, f.stats.maxHp);
 }
 
 function drawHpBar(ctx: CanvasRenderingContext2D, x: number, y: number, hp: number, maxHp: number) {

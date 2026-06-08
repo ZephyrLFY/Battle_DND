@@ -67,12 +67,12 @@ describe('deriveStats — 战斗数值派生', () => {
     expect(deriveStats({ str: 10, dex: 10, con: 1 }, 1).maxHp).toBeGreaterThanOrEqual(1);
   });
 
-  it('maxSlots = 1 + floor(level/4)', () => {
+  it('maxEnergy = 3 + floor(level/4)', () => {
     const ab = { str: 10, dex: 10, con: 10 };
-    expect(deriveStats(ab, 1).maxSlots).toBe(1);
-    expect(deriveStats(ab, 4).maxSlots).toBe(2);
-    expect(deriveStats(ab, 8).maxSlots).toBe(3);
-    expect(deriveStats(ab, 15).maxSlots).toBe(4);
+    expect(deriveStats(ab, 1).maxEnergy).toBe(3);
+    expect(deriveStats(ab, 4).maxEnergy).toBe(4);
+    expect(deriveStats(ab, 8).maxEnergy).toBe(5);
+    expect(deriveStats(ab, 15).maxEnergy).toBe(6);
   });
 
   it('lifestealRate = max(0, CON_mod) * 5%；低 CON 为 0', () => {

@@ -122,42 +122,48 @@ describe('倒地 → 死亡两段（1v1 退化）', () => {
   });
 });
 
-describe('法术位与动作可用性', () => {
-  it('耗位法术用尽后不可用；戏法仍可用', () => {
-    // Onix Lv3 → maxSlots=1；带 brave_strike(cost1) + shield_block(cost0)
-    const a = mk('Onix', 3, ['brave_strike', 'shield_block']);
+describe('能量系统（普攻攒能、技能耗能）', () => {
+  it('能量从 0 起；普攻命中 +1；戏法(cost0)随时可用', () => {
+    const a = mk('Onix', 8, ['brave_strike', 'shield_block']);
     const b = mk('Onix', 15);
     let st = firstTurnOf(a, b, 'a');
-    expect(st.teams.a[0]!.slots).toBe(1);
-    // a 放 brave_strike（带目标）
-    const braveOpt = allActions(st).find(
-      (o) => o.action.kind === 'skill' && o.action.skill === 'brave_strike',
-    )!;
-    st = applyAction(st, braveOpt.action).state;
-    expect(st.teams.a[0]!.slots).toBe(0);
-    // b 普攻
-    st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Onix' } }).state;
-    // 回到 a：brave 不可用、shield 可用
-    expect(currentFighter(st)!.team).toBe('a');
-    const acts = legalActions(st);
+    expect(st.teams.a[0]!.energy).toBe(0);
+    // 0 能量时 brave(cost1) 不可用，但 shield(cost0) 可用
+    let acts = legalActions(st);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(false);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'shield_block')).toBe(true);
+    // a 普攻 → 攒到 1 能量
+    st = applyAction(st, { kind: 'attack', target: { team: 'b', id: 'Onix' } }).state;
+    expect(st.teams.a[0]!.energy).toBe(1);
   });
 
-  it('allActions 把无法术位的技能标 usable:false + 理由', () => {
-    const a = mk('Onix', 3, ['brave_strike']);
+  it('攒够能量后可放技能，放完能量扣除', () => {
+    const a = mk('Onix', 8, ['brave_strike']); // cost 1
     const b = mk('Onix', 15);
     let st = firstTurnOf(a, b, 'a');
-    const braveOpt = allActions(st).find(
+    // a 普攻攒 1 能量，b 普攻
+    st = applyAction(st, { kind: 'attack', target: { team: 'b', id: 'Onix' } }).state;
+    st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Onix' } }).state;
+    // 回到 a，能量 1，可放 brave
+    expect(currentFighter(st)!.team).toBe('a');
+    expect(st.teams.a[0]!.energy).toBe(1);
+    const brave = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'brave_strike',
     )!;
-    st = applyAction(st, braveOpt.action).state;
-    st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Onix' } }).state;
+    expect(brave.usable).toBe(true);
+    st = applyAction(st, brave.action).state;
+    expect(st.teams.a[0]!.energy).toBe(0); // 扣掉
+  });
+
+  it('能量不足时技能标 usable:false + 理由"能量不足"', () => {
+    const a = mk('Onix', 8, ['brave_strike']);
+    const b = mk('Onix', 15);
+    const st = firstTurnOf(a, b, 'a'); // 能量 0
     const opt = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'brave_strike',
     );
     expect(opt?.usable).toBe(false);
-    expect(opt?.reason).toBe('无法术位');
+    expect(opt?.reason).toBe('能量不足');
   });
 });
 
@@ -251,6 +257,7 @@ describe('AOE / 团队技能', () => {
       st = createBattle(caster, enemies, seed).state;
     }
     expect(currentFighter(st)?.team).toBe('a');
+    st.teams.a[0]!.energy = 9; // 给够能量放 firestorm(cost2)
     const fire = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'firestorm',
     )!;
@@ -268,6 +275,7 @@ describe('AOE / 团队技能', () => {
     // 压低队友血量
     const ally = find(st, { team: 'a', id: 'Onix' })!;
     ally.hp = 5;
+    st.teams.a[0]!.energy = 9; // 给够能量放 heal(cost1)
     const healOpt = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'heal',
     );

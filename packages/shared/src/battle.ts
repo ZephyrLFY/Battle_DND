@@ -50,7 +50,7 @@ function mkFighter(team: Side, c: Combatant): FighterRT {
     stats,
     hp: stats.maxHp,
     skills: [...c.skills],
-    slots: stats.maxSlots,
+    energy: 0, // 从 0 起，普攻命中攒能量
     downed: false,
     dead: false,
     stunned: 0,
@@ -72,7 +72,7 @@ function toPublic(f: FighterRT): FighterPublic {
     maxHp: f.stats.maxHp,
     ac: f.stats.ac,
     skills: f.skills,
-    maxSlots: f.stats.maxSlots,
+    maxEnergy: f.stats.maxEnergy,
   };
 }
 
@@ -179,11 +179,11 @@ export function allActions(state: BattleState, ref?: FighterRef): ActionOption[]
 
   for (const s of f.skills) {
     const def = skillDef(s);
-    const enough = f.slots >= def.cost;
+    const enough = f.energy >= def.cost;
     const targets = defaultTargets(state, f, def.targetType);
     const hasTarget = targets.length > 0 || def.targetType === 'self';
     const usable = !blocked && enough && hasTarget;
-    const reason = blockReason ?? (!enough ? '无法术位' : !hasTarget ? '无目标' : undefined);
+    const reason = blockReason ?? (!enough ? '能量不足' : !hasTarget ? '无目标' : undefined);
     opts.push({ action: { kind: 'skill', skill: s, targets }, usable, reason });
   }
   return opts;
@@ -299,7 +299,7 @@ function validate(state: BattleState, actor: FighterRT, action: Action): Action 
   }
   // skill
   const learned = actor.skills.includes(action.skill);
-  const enough = actor.slots >= skillDef(action.skill).cost;
+  const enough = actor.energy >= skillDef(action.skill).cost;
   if (learned && enough) return action;
   // 回退普攻
   const e = aliveOf(state, otherSide(actor.team)).find((x) => !x.downed);
@@ -318,6 +318,11 @@ function perform(
     const target = find(state, action.target);
     if (target) doAttack(state, actor, target, rng, emit, { charged: actor.charged });
     actor.charged = false;
+    // 普攻攒能量：+1（上限 maxEnergy）。这让"想放大招得先普攻"，普攻不被废弃。
+    if (actor.energy < actor.stats.maxEnergy) {
+      actor.energy = Math.min(actor.stats.maxEnergy, actor.energy + 1);
+      emit({ t: 'energy', who: refOf(actor), delta: 1, now: actor.energy });
+    }
     return;
   }
 
@@ -325,8 +330,8 @@ function perform(
   const def = skillDef(action.skill);
   emit({ t: 'action', who: refOf(actor), action, skillName: def.name });
   if (def.cost > 0) {
-    actor.slots = Math.max(0, actor.slots - def.cost);
-    emit({ t: 'slot', who: refOf(actor), spent: action.skill, left: actor.slots });
+    actor.energy = Math.max(0, actor.energy - def.cost);
+    emit({ t: 'energy', who: refOf(actor), delta: -def.cost, now: actor.energy, spent: action.skill });
   }
   const targets = action.targets
     .map((r) => find(state, r))
@@ -379,9 +384,10 @@ function doAttack(
     return;
   }
 
-  let dmgSpec = mods.charged ? '3d6' : mods.brave ? '2d6' : '1d6';
+  // 法术加强：蓄力 4d6、英勇 3d6、AOE 2d6、普攻 1d6（让消耗能量更值）
+  let dmgSpec = mods.charged ? '4d6' : mods.brave ? '3d6' : mods.aoe ? '2d6' : '1d6';
   if (crit) dmgSpec = doubleDice(dmgSpec);
-  // AOE：固定骰、不加 STR 伤害调整（范围技能较轻）
+  // AOE 不加 STR 伤害调整（已靠多目标 + 2d6 体现价值）
   const dmgBonus = mods.aoe ? 0 : actor.stats.dmgBonus;
   const dmgRoll = roll(rng, dmgSpec, dmgBonus);
 

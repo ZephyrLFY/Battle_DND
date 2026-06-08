@@ -90,7 +90,7 @@ export function BuildEditor({
         <span>命中 +{stats.toHit}</span>
         <span>伤害 +{stats.dmgBonus}</span>
         <span>先攻 {fmt(stats.initiative)}</span>
-        <span>🔮 法术位 {stats.maxSlots}</span>
+        <span>⚡ 能量上限 {stats.maxEnergy}</span>
         {stats.lifestealRate > 0 && <span>🩸 吸血 {Math.round(stats.lifestealRate * 100)}%</span>}
       </div>
 
@@ -141,9 +141,9 @@ export function BuildEditor({
 
 const COST_LABEL: Record<number, string> = {
   0: '戏法·免费',
-  1: '🔮 ×1',
-  2: '🔮 ×2',
-  3: '🔮 ×3',
+  1: '⚡×1',
+  2: '⚡×2',
+  3: '⚡×3',
 };
 
 /** 技能名 + 消耗徽章 + 解锁等级。 */

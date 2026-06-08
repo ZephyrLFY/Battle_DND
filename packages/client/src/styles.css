@@ -8,7 +8,7 @@ body {
 }
 
 .app {
-  max-width: 680px;
+  max-width: 920px;
   margin: 0 auto;
   padding: 24px 16px 48px;
 }
@@ -105,7 +105,8 @@ button.fight {
   text-align: center;
   font-size: 20px;
   font-weight: 800;
-  margin: 14px 0;
+  margin: 10px 0;
+  min-height: 28px; /* 始终占位，胜负出现/消失不让页面跳变 */
 }
 .verdict.win { color: #4dd86b; }
 .verdict.lose { color: #ff5555; }
@@ -275,6 +276,8 @@ button.fight {
   border-radius: 10px;
   padding: 12px;
   position: relative; /* 供 .ap-overlay 定位 */
+  min-height: 96px; /* 固定高度：普攻/选目标/遮罩切换不再让页面跳变 */
+  box-sizing: border-box;
 }
 /* 敌方回合：盖一层半透明遮罩，技能栏布局不变（不横跳） */
 .ap-overlay {

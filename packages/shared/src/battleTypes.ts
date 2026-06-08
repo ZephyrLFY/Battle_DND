@@ -30,8 +30,8 @@ export interface FighterRT {
   hp: number;
   /** 已学技能。 */
   skills: SkillId[];
-  /** 剩余法术位（整场不回）。 */
-  slots: number;
+  /** 当前能量（从 0 起，普攻命中 +1，放技能消耗，上限 stats.maxEnergy）。 */
+  energy: number;
 
   // —— 状态 ——
   /** 倒地：HP≤0 但未彻底死亡，不能行动，可被救活。 */
@@ -90,7 +90,7 @@ export interface FighterPublic {
   maxHp: number;
   ac: number;
   skills: SkillId[];
-  maxSlots: number;
+  maxEnergy: number;
 }
 
 export type BattleEvent =
@@ -98,7 +98,7 @@ export type BattleEvent =
   | { t: 'turn'; who: FighterRef; round: number }
   | { t: 'skip'; who: FighterRef; why: 'downed' | 'stunned' }
   | { t: 'action'; who: FighterRef; action: Action; skillName?: string }
-  | { t: 'slot'; who: FighterRef; spent: SkillId; left: number }
+  | { t: 'energy'; who: FighterRef; delta: number; now: number; spent?: SkillId } // 能量变化（+普攻攒/−技能耗）
   | { t: 'hit'; by: FighterRef; to: FighterRef; roll: HitRollInfo; hit: boolean; crit: boolean; vsAc: number }
   | { t: 'damage'; to: FighterRef; roll: RollDetail; mitigated: number; dealt: number; hpLeft: number }
   | { t: 'lifesteal'; who: FighterRef; amount: number; hpLeft: number }
