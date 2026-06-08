@@ -11,16 +11,31 @@
  * MVP 先纯随机。
  */
 import { Rng } from './rng.js';
-import { legalActions, type Action, type BattleState } from './battle.js';
+import {
+  legalActions,
+  currentFighter,
+  aliveOf,
+  type Action,
+  type BattleState,
+} from './battle.js';
+import { otherTeam } from './battleTypes.js';
 
 /**
- * 为当前行动方选一个动作（纯随机）。
- * @param state 当前战斗状态
- * @param seed  决定随机选择的种子（同 state+seed 恒等输出，便于复现）
+ * 为当前行动方选一个动作 + 目标（纯随机）。
+ * legalActions 已带默认目标；随机从中选一个。
+ * @param seed 决定随机选择的种子（同 state+seed 恒等输出，便于复现）
+ *
+ * TODO(ai): 当前是纯随机（动作和目标都随机）。后续迭代：选目标优先打残血/救倒地队友、
+ *           AOE 多目标时机、低血防御、难度分级。
  */
 export function chooseAction(state: BattleState, seed: number): Action {
   const actions = legalActions(state);
-  if (actions.length === 0) return { kind: 'attack' }; // 被眩晕等情况：动作会被引擎忽略
+  if (actions.length === 0) {
+    // 无合法动作（被眩晕/倒地等）：给个会被引擎忽略的占位普攻
+    const cur = currentFighter(state);
+    const enemy = cur ? aliveOf(state, otherTeam(cur.team))[0] : undefined;
+    return { kind: 'attack', target: enemy ? { team: enemy.team, id: enemy.id } : { team: 'b', id: '' } };
+  }
   const rng = new Rng(seed);
   const idx = rng.int(0, actions.length - 1);
   return actions[idx]!;

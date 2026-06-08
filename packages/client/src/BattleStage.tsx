@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { themeColor, type BattleState, type Fighter } from '@battle-pokemon/shared';
+import { currentFighter, type BattleState, type FighterRT } from '@battle-pokemon/shared';
+import { fighterColor } from './presentation.js';
 
 const W = 600;
 const H = 280;
@@ -24,9 +25,12 @@ export function BattleStage({ state }: { state: BattleState | null }) {
       ctx.fillText('选好精灵后点「开始战斗」', W / 2, H / 2);
       return;
     }
-    const active = state.winner === undefined ? state.turn : null;
-    drawFighter(ctx, state.a, { x: 150, y: 150 }, 'left', active === 'a');
-    drawFighter(ctx, state.b, { x: 450, y: 150 }, 'right', active === 'b');
+    // 1v1：每队取第一个角色（3v3 布局是第二步）
+    const cur = state.winner === undefined ? currentFighter(state) : undefined;
+    const fa = state.teams.a[0];
+    const fb = state.teams.b[0];
+    if (fa) drawFighter(ctx, fa, { x: 150, y: 150 }, 'left', cur?.id === fa.id && cur?.team === 'a');
+    if (fb) drawFighter(ctx, fb, { x: 450, y: 150 }, 'right', cur?.id === fb.id && cur?.team === 'b');
   }, [state]);
 
   return <canvas ref={canvasRef} width={W} height={H} className="stage" />;
@@ -46,13 +50,12 @@ function drawBackground(ctx: CanvasRenderingContext2D) {
 
 function drawFighter(
   ctx: CanvasRenderingContext2D,
-  f: Fighter,
+  f: FighterRT,
   pos: { x: number; y: number },
   facing: 'left' | 'right',
   active: boolean,
 ) {
-  const ab = abilitiesFromFighter(f);
-  const color = themeColor(ab);
+  const color = fighterColor(f);
   const r = 44;
 
   if (active) {
@@ -93,22 +96,12 @@ function drawFighter(
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(f.species, pos.x, pos.y + r + 22);
+  ctx.fillText(f.name, pos.x, pos.y + r + 22);
   ctx.font = '12px sans-serif';
   ctx.fillStyle = '#cbd5e1';
   ctx.fillText(`Lv.${f.level}  AC ${f.stats.ac + f.acBonus}`, pos.x, pos.y + r + 40);
 
   drawHpBar(ctx, pos.x - 50, pos.y - r - 26, f.hp, f.stats.maxHp);
-}
-
-/** 从 fighter 反推属性近似（仅为取主题色；用派生 mod 还原大致属性高低）。 */
-function abilitiesFromFighter(f: Fighter): { str: number; dex: number; con: number } {
-  // stats 里有 strMod/dexMod/conMod，反推一个代表值用于选色即可
-  return {
-    str: 10 + f.stats.strMod * 2,
-    dex: 10 + f.stats.dexMod * 2,
-    con: 10 + f.stats.conMod * 2,
-  };
 }
 
 function drawHpBar(ctx: CanvasRenderingContext2D, x: number, y: number, hp: number, maxHp: number) {

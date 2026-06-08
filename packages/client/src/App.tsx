@@ -1,27 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   SKILLS,
-  SPECIES_NAMES,
+  ARCHETYPE_IDS,
   ALL_SKILL_IDS,
-  newPokemon,
+  newCombatant,
   learnSkill,
   allocate,
   type Action,
-  type PokemonInstance,
+  type Combatant,
 } from '@battle-pokemon/shared';
 import { BuildEditor } from './BuildEditor.js';
 import { BattleStage } from './BattleStage.js';
 import { useBattle } from './useBattle.js';
 
-/** 给敌方一个随机 build（随机精灵 + 随机加点 + 随机学 2~3 个技能），让 PvE 有变化。 */
-function randomEnemy(level: number, seed: number): PokemonInstance {
+// TODO(step2): 把敌人生成挪进 shared 的 generateEnemyTeam(level, seed)（去 UI 层手搓随机）。
+/** 给敌方一个随机 build（随机角色 + 随机加点 + 随机学 2~3 个技能），让 PvE 有变化。 */
+function randomEnemy(level: number, seed: number): Combatant {
   let rnd = seed >>> 0;
   const rand = () => {
     rnd = (rnd * 1664525 + 1013904223) >>> 0;
     return rnd / 0xffffffff;
   };
 
-  let p = { ...newPokemon(SPECIES_NAMES[Math.floor(rand() * SPECIES_NAMES.length)]!), level };
+  let p = { ...newCombatant(ARCHETYPE_IDS[Math.floor(rand() * ARCHETYPE_IDS.length)]!), level };
 
   // 把可用点随机撒到三属性，直到点数耗尽（allocate 点数不足时抛错跳出）
   const keys = ['str', 'dex', 'con'] as const;
@@ -46,7 +47,7 @@ function randomEnemy(level: number, seed: number): PokemonInstance {
 }
 
 export function App() {
-  const [me, setMe] = useState<PokemonInstance>(() => newPokemon('Charmander'));
+  const [me, setMe] = useState<Combatant>(() => newCombatant('Charmander'));
   const battle = useBattle();
   const [phase, setPhase] = useState<'build' | 'battle'>('build');
   const logRef = useRef<HTMLDivElement>(null);

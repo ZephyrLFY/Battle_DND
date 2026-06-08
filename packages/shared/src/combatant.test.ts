@@ -3,15 +3,13 @@ import {
   abilityMod,
   proficiency,
   deriveStats,
-  newPokemon,
+  newCombatant,
   statsOf,
-  SPECIES_TALENT,
-  SPECIES_NAMES,
-  STARTING_TOTAL,
   MAX_LEVEL,
   expToLevelUp,
   expGainFor,
-} from './pokemon.js';
+} from './combatant.js';
+import { ROSTER, ARCHETYPE_IDS, STARTING_TOTAL } from './roster.js';
 
 describe('abilityMod — 5e 调整值公式', () => {
   it('标准映射', () => {
@@ -35,14 +33,14 @@ describe('proficiency — 随等级', () => {
   });
 });
 
-describe('天赋表 — 公平性', () => {
-  it('12 只精灵都存在', () => {
-    expect(SPECIES_NAMES).toHaveLength(12);
+describe('名册 — 公平性', () => {
+  it('12 个角色都存在', () => {
+    expect(ARCHETYPE_IDS).toHaveLength(12);
   });
 
-  it('每只精灵 1 级三属性总和都等于 STARTING_TOTAL(39)', () => {
-    for (const name of SPECIES_NAMES) {
-      const t = SPECIES_TALENT[name]!;
+  it('每个角色 1 级天赋三属性总和都等于 STARTING_TOTAL(39)', () => {
+    for (const id of ARCHETYPE_IDS) {
+      const t = ROSTER[id]!.talent;
       expect(t.str + t.dex + t.con).toBe(STARTING_TOTAL);
     }
   });
@@ -83,27 +81,27 @@ describe('deriveStats — 战斗数值派生', () => {
   });
 });
 
-describe('newPokemon / statsOf', () => {
-  it('新精灵 1 级、0 经验、属性=天赋、无技能', () => {
-    const p = newPokemon('Pikachu');
-    expect(p).toMatchObject({ species: 'Pikachu', level: 1, exp: 0, skills: [] });
-    expect(p.abilities).toEqual(SPECIES_TALENT['Pikachu']);
+describe('newCombatant / statsOf', () => {
+  it('新角色 1 级、0 经验、属性=天赋、无技能', () => {
+    const c = newCombatant('Pikachu');
+    expect(c).toMatchObject({ archetypeId: 'Pikachu', level: 1, exp: 0, skills: [] });
+    expect(c.abilities).toEqual(ROSTER['Pikachu']!.talent);
   });
 
   it('Pikachu（高DEX）AC 高于 Muk（低DEX）', () => {
-    const pika = statsOf(newPokemon('Pikachu'));
-    const muk = statsOf(newPokemon('Muk'));
+    const pika = statsOf(newCombatant('Pikachu'));
+    const muk = statsOf(newCombatant('Muk'));
     expect(pika.ac).toBeGreaterThan(muk.ac);
   });
 
   it('Muk（极致CON）HP 高于 Pikachu', () => {
-    const pika = statsOf(newPokemon('Pikachu'));
-    const muk = statsOf(newPokemon('Muk'));
+    const pika = statsOf(newCombatant('Pikachu'));
+    const muk = statsOf(newCombatant('Muk'));
     expect(muk.maxHp).toBeGreaterThan(pika.maxHp);
   });
 
-  it('未知 species 抛错', () => {
-    expect(() => newPokemon('Mewtwo')).toThrow();
+  it('未知 archetypeId 抛错', () => {
+    expect(() => newCombatant('Mewtwo')).toThrow();
   });
 });
 
