@@ -11,17 +11,51 @@
  * MVP 先纯随机。
  */
 import { Rng } from './rng.js';
-import { legalActions, type Action, type BattleState } from './battle.js';
+import {
+  legalActions,
+  legalTargets,
+  currentFighter,
+  aliveOf,
+  type Action,
+  type BattleState,
+} from './battle.js';
+import { otherSide } from './battleTypes.js';
+import { skillDef } from './skills.js';
 
 /**
- * 为当前行动方选一个动作（纯随机）。
- * @param state 当前战斗状态
- * @param seed  决定随机选择的种子（同 state+seed 恒等输出，便于复现）
+ * 为当前行动方选一个动作 + 目标（纯随机）。
+ * 先随机选动作，再对单体动作随机选目标（3v3 下不总打同一个）。
+ * @param seed 决定随机选择的种子（同 state+seed 恒等输出，便于复现）
+ *
+ * TODO(ai): 当前纯随机（动作+目标都随机）。后续迭代：优先打残血/救倒地队友、
+ *           AOE 多目标时机、低血防御、难度分级。
  */
 export function chooseAction(state: BattleState, seed: number): Action {
+  const cur = currentFighter(state);
   const actions = legalActions(state);
-  if (actions.length === 0) return { kind: 'attack' }; // 被眩晕等情况：动作会被引擎忽略
+  if (actions.length === 0 || !cur) {
+    // 无合法动作（被眩晕/倒地等）：给个会被引擎忽略的占位普攻
+    const enemy = cur ? aliveOf(state, otherSide(cur.team))[0] : undefined;
+    return { kind: 'attack', target: enemy ? { team: enemy.team, id: enemy.id } : { team: 'b', id: '' } };
+  }
   const rng = new Rng(seed);
-  const idx = rng.int(0, actions.length - 1);
-  return actions[idx]!;
+  const chosen = actions[rng.int(0, actions.length - 1)]!;
+
+  // 单体动作：在合法目标里随机换一个（让 3v3 选目标有变化）
+  if (chosen.kind === 'attack') {
+    const enemies = aliveOf(state, otherSide(cur.team)).filter((e) => !e.downed);
+    if (enemies.length > 0) {
+      const e = enemies[rng.int(0, enemies.length - 1)]!;
+      return { kind: 'attack', target: { team: e.team, id: e.id } };
+    }
+  } else {
+    const tt = skillDef(chosen.skill).targetType;
+    if (tt === 'one_enemy' || tt === 'one_ally') {
+      const targs = legalTargets(state, cur, tt);
+      if (targs.length > 0) {
+        return { kind: 'skill', skill: chosen.skill, targets: [targs[rng.int(0, targs.length - 1)]!] };
+      }
+    }
+  }
+  return chosen;
 }

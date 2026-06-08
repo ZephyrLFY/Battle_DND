@@ -3,13 +3,14 @@
  * 战斗前用它配好我方 build。所有变更走 shared/leveling 的纯函数。
  */
 import {
-  SPECIES_NAMES,
+  ARCHETYPE_IDS,
   ABILITY_KEYS,
   ABILITY_LABEL,
   SKILLS,
   MAX_EQUIPPED_SKILLS,
-  newPokemon,
+  newCombatant,
   statsOf,
+  abilitiesOf,
   allocate,
   respec,
   availablePoints,
@@ -18,7 +19,7 @@ import {
   forgetSkill,
   canLearn,
   learnBlockReason,
-  type PokemonInstance,
+  type Combatant,
   type AbilityKey,
   type SkillId,
 } from '@battle-pokemon/shared';
@@ -27,14 +28,15 @@ export function BuildEditor({
   poke,
   onChange,
 }: {
-  poke: PokemonInstance;
-  onChange: (p: PokemonInstance) => void;
+  poke: Combatant;
+  onChange: (p: Combatant) => void;
 }) {
   const stats = statsOf(poke);
+  const abil = abilitiesOf(poke);
   const pts = availablePoints(poke);
   const learnable = learnableSkills(poke);
 
-  const setSpecies = (species: string) => onChange(newPokemon(species));
+  const setArchetype = (id: string) => onChange(newCombatant(id));
   const setLevel = (level: number) => {
     // 改等级后若可用点变负（降级），洗点重置以保持合法
     const next = { ...poke, level };
@@ -44,8 +46,8 @@ export function BuildEditor({
   return (
     <div className="build">
       <div className="build-row">
-        <select value={poke.species} onChange={(e) => setSpecies(e.target.value)}>
-          {SPECIES_NAMES.map((n) => (
+        <select value={poke.archetypeId} onChange={(e) => setArchetype(e.target.value)}>
+          {ARCHETYPE_IDS.map((n) => (
             <option key={n} value={n}>
               {n}
             </option>
@@ -68,9 +70,9 @@ export function BuildEditor({
           <AbilityRow
             key={k}
             akey={k}
-            value={poke.abilities[k]}
-            canAdd={pts > 0 && poke.abilities[k] < 20}
-            canSub={poke.abilities[k] > newPokemon(poke.species).abilities[k]}
+            value={abil[k]}
+            canAdd={pts > 0 && abil[k] < 20}
+            canSub={poke.allocations[k] > 0}
             onAdd={() => onChange(allocate(poke, k, 1))}
             onSub={() => onChange(allocate(poke, k, -1))}
           />

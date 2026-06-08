@@ -314,3 +314,45 @@ button.fight {
 .ap-btn.disabled { opacity: 0.4; }
 .ap-cost { font-size: 11px; }
 .ap-reason { font-size: 10px; color: #ff8888; }
+
+/* ── 3v3 队伍编辑器 ── */
+.team-editor { margin-bottom: 8px; }
+.lineup-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.lineup-tab {
+  flex: 1;
+  background: #182032;
+  border: 1px solid #28324a;
+  padding: 8px 6px;
+  font-size: 13px;
+}
+.lineup-tab.on { background: #2c3650; border-color: #4a6; color: #fff; }
+.lineup-tab small { color: #8b98ad; }
+.member-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #aeb9cc;
+}
+.member-pick select {
+  padding: 5px 8px;
+  background: #0e1320;
+  color: #e6edf3;
+  border: 1px solid #2c3650;
+  border-radius: 6px;
+  margin-left: 4px;
+}
+.lineup-hint { color: #5a6680; font-size: 12px; }
+
+/* ── 自动开关 / 选目标 ── */
+.auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: #aeb9cc;
+  cursor: pointer;
+}
+.ap-hint { font-size: 12px; color: #ffd24a; margin-bottom: 8px; }
+.ap-btn.cancel { background: #3a2730; color: #e0a0a0; }

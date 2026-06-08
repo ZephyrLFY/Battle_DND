@@ -1,52 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   SKILLS,
-  SPECIES_NAMES,
-  ALL_SKILL_IDS,
-  newPokemon,
-  learnSkill,
-  allocate,
+  generateEnemyTeam,
+  currentFighter,
   type Action,
-  type PokemonInstance,
+  type Combatant,
 } from '@battle-pokemon/shared';
-import { BuildEditor } from './BuildEditor.js';
+import { TeamEditor, defaultTeam } from './TeamEditor.js';
 import { BattleStage } from './BattleStage.js';
 import { useBattle } from './useBattle.js';
 
-/** 给敌方一个随机 build（随机精灵 + 随机加点 + 随机学 2~3 个技能），让 PvE 有变化。 */
-function randomEnemy(level: number, seed: number): PokemonInstance {
-  let rnd = seed >>> 0;
-  const rand = () => {
-    rnd = (rnd * 1664525 + 1013904223) >>> 0;
-    return rnd / 0xffffffff;
-  };
-
-  let p = { ...newPokemon(SPECIES_NAMES[Math.floor(rand() * SPECIES_NAMES.length)]!), level };
-
-  // 把可用点随机撒到三属性，直到点数耗尽（allocate 点数不足时抛错跳出）
-  const keys = ['str', 'dex', 'con'] as const;
-  for (let guard = 0; guard < 200; guard++) {
-    try {
-      p = allocate(p, keys[Math.floor(rand() * 3)]!, 1);
-    } catch {
-      break;
-    }
-  }
-
-  // 随机学 2~3 个技能
-  const shuffled = [...ALL_SKILL_IDS].sort(() => rand() - 0.5);
-  for (const s of shuffled.slice(0, 2 + Math.floor(rand() * 2))) {
-    try {
-      p = learnSkill(p, s);
-    } catch {
-      /* 已学过则跳过 */
-    }
-  }
-  return p;
-}
-
 export function App() {
-  const [me, setMe] = useState<PokemonInstance>(() => newPokemon('Charmander'));
+  const [team, setTeam] = useState<Combatant[]>(() => defaultTeam());
   const battle = useBattle();
   const [phase, setPhase] = useState<'build' | 'battle'>('build');
   const logRef = useRef<HTMLDivElement>(null);
@@ -57,43 +22,56 @@ export function App() {
 
   const onStart = () => {
     const seed = (Math.random() * 0xffffffff) >>> 0;
-    const enemy = randomEnemy(me.level, seed ^ 0x9e3779b9);
-    battle.start(me, enemy, seed);
+    const enemyLevel = team[0]?.level ?? 8;
+    const enemy = generateEnemyTeam(enemyLevel, seed ^ 0x9e3779b9);
+    battle.start(team, enemy, seed);
     setPhase('battle');
   };
 
   return (
     <div className="app">
       <h1>
-        Battle Pokemon <span className="sub">— D&D 回合制 · build + 对战</span>
+        Battle Pokemon <span className="sub">— 3v3 D&D 队伍战</span>
       </h1>
 
       {phase === 'build' ? (
         <>
-          <div className="section-title">配置你的精灵</div>
-          <BuildEditor poke={me} onChange={setMe} />
+          <div className="section-title">配置你的队伍（3 人出战）</div>
+          <TeamEditor team={team} onChange={setTeam} />
           <div className="controls">
             <button className="fight" onClick={onStart}>
-              ⚔ 开始战斗（随机敌人）
+              ⚔ 开始战斗（随机敌队）
             </button>
           </div>
         </>
       ) : (
         <>
-          <BattleStage state={battle.state} />
+          <BattleStage
+            state={battle.state}
+            candidates={battle.pending?.candidates}
+            onPickTarget={battle.chooseTarget}
+          />
           <ActionPanel battle={battle} />
           {battle.finished && (
             <div
               className={`verdict ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}
             >
-              {battle.winner === 'a' ? '🎉 你赢了！' : battle.winner === 'b' ? '💀 你输了' : '⚖ 同归于尽'}
+              {battle.winner === 'a' ? '🎉 你的队伍获胜！' : battle.winner === 'b' ? '💀 你的队伍落败' : '⚖ 双方全灭'}
             </div>
           )}
           <div className="controls">
             <button onClick={() => setPhase('build')}>← 回到配置</button>
-            <button className="fight" onClick={onStart} disabled={!battle.finished && !!battle.state}>
+            <button className="fight" onClick={onStart}>
               再来一场
             </button>
+            <label className="auto-toggle">
+              <input
+                type="checkbox"
+                checked={battle.auto}
+                onChange={(e) => battle.setAuto(e.target.checked)}
+              />
+              自动战斗
+            </label>
           </div>
           <div className="log" ref={logRef}>
             {battle.log.map((l, i) => (
@@ -110,12 +88,37 @@ export function App() {
 
 function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
   if (battle.finished || !battle.state) return null;
-  // 布局始终稳定：技能栏一直在原位；非我方回合时盖一层半透明遮罩，避免 UI 横跳。
+
+  // 选目标阶段
+  if (battle.pending) {
+    return (
+      <div className="action-panel">
+        <div className="ap-title">
+          选择目标（{battle.pending.skill ? SKILLS[battle.pending.skill as keyof typeof SKILLS].name : '普攻'}）
+        </div>
+        <div className="ap-hint">点击战场上高亮的角色作为目标</div>
+        <div className="ap-buttons">
+          {battle.pending.candidates.map((r, i) => (
+            <button key={i} className="ap-btn" onClick={() => battle.chooseTarget(r)}>
+              {r.team === 'a' ? '我方' : '敌方'} {r.id}
+            </button>
+          ))}
+          <button className="ap-btn cancel" onClick={battle.cancelPending}>
+            取消
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const cur = currentFighter(battle.state);
   const waiting = !battle.myTurn;
+  const actorName = cur?.team === 'a' ? cur.id : null;
+
   return (
     <div className="action-panel">
       <div className="ap-title">
-        你的回合 — 选择行动
+        {battle.auto ? '自动战斗中…' : actorName ? `${actorName} 的回合` : '你的回合'}
         <span className="ap-slots">🔮 法术位 {battle.mySlots}</span>
       </div>
       <div className="ap-buttons">
@@ -123,19 +126,17 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
           <button
             key={i}
             className={`ap-btn ${opt.usable ? '' : 'disabled'}`}
-            onClick={() => opt.usable && battle.act(opt.action)}
+            onClick={() => opt.usable && battle.choose(opt.action)}
             disabled={!opt.usable}
             title={tip(opt.action)}
           >
             {label(opt.action)}
             {cost(opt.action) > 0 && <small className="ap-cost">🔮×{cost(opt.action)}</small>}
-            {!waiting && !opt.usable && opt.reason && (
-              <small className="ap-reason">{opt.reason}</small>
-            )}
+            {!waiting && !opt.usable && opt.reason && <small className="ap-reason">{opt.reason}</small>}
           </button>
         ))}
       </div>
-      {waiting && (
+      {waiting && !battle.auto && (
         <div className="ap-overlay">
           <span>敌方行动中…</span>
         </div>
