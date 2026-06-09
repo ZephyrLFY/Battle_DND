@@ -62,15 +62,6 @@ export const MAX_EQUIPPED_SKILLS = 4;
 
 export const SKILLS: Record<SkillId, SkillDef> = {
   // ── 戏法（Lv1 解锁，cost 0，无限放）──
-  shield_block: {
-    id: 'shield_block',
-    name: '护盾格挡',
-    category: 'defense',
-    targetType: 'self',
-    cost: 0,
-    unlockLevel: 1,
-    desc: '本回合 AC +5，并反弹 1d4 伤害给攻击者。',
-  },
   stone_skin: {
     id: 'stone_skin',
     name: '石化表皮',
@@ -98,6 +89,15 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     cost: 1,
     unlockLevel: 3,
     desc: '本次攻击伤害骰 1d6→3d6，命中 +2。',
+  },
+  shield_block: {
+    id: 'shield_block',
+    name: '护盾格挡',
+    category: 'defense',
+    targetType: 'self',
+    cost: 1,
+    unlockLevel: 3,
+    desc: '本回合 AC +3，并反弹 1 点伤害给下一次攻击者。',
   },
   // ── 中阶法术（Lv6/8，cost 2）──
   stun_strike: {

@@ -109,31 +109,32 @@ describe('战斗收敛与胜负', () => {
   });
 });
 
-describe('倒地 → 死亡两段（1v1 退化）', () => {
-  it('被打到 0 先倒地，再被打才彻底死亡并结束', () => {
-    // 用强者打弱者，跟踪 downed → dead 事件序列
-    const { events } = autoRun(mk('Hitmonlee', 15, ['flurry']), mk('Pikachu', 1), 11);
+describe('倒地与胜负（1v1 退化）', () => {
+  it('对方被打至倒地即判负（倒地不可补刀，全员倒地立即结束）', () => {
+    // 强者打弱者：弱者倒地的那一刻战斗结束（1v1 下对方全倒）
+    const { state, events } = autoRun(mk('Hitmonlee', 15, ['flurry']), mk('Pikachu', 1), 11);
     const downedIdx = events.findIndex((e) => e.t === 'downed');
-    const deadIdx = events.findIndex((e) => e.t === 'dead');
     const endIdx = events.findIndex((e) => e.t === 'end');
-    expect(downedIdx).toBeGreaterThanOrEqual(0);
-    expect(deadIdx).toBeGreaterThan(downedIdx); // 先倒地后死亡
-    expect(endIdx).toBeGreaterThanOrEqual(deadIdx);
+    expect(downedIdx).toBeGreaterThanOrEqual(0); // 出现倒地
+    expect(endIdx).toBeGreaterThan(downedIdx); // 倒地后即结束
+    expect(state.winner).toBe('a'); // 强者胜
+    // 弱者是倒地（不是被补刀彻底死亡，游戏已先结束）
+    expect(state.teams.b[0]!.downed).toBe(true);
   });
 });
 
 describe('能量系统（普攻攒能、技能耗能）', () => {
   it('能量从 0 起；普攻命中 +1；戏法(cost0)随时可用', () => {
-    const a = mk('Onix', 8, ['brave_strike', 'shield_block']);
+    const a = mk('Onix', 8, ['brave_strike', 'stone_skin']);
     const b = mk('Onix', 15);
     let st = firstTurnOf(a, b, 'a');
     expect(st.teams.a[0]!.energy).toBe(0);
-    // 0 能量时 brave(cost1) 不可用，但 shield(cost0) 可用
+    // 0 能量时 brave(cost1) 不可用，但 stone_skin(cost0 戏法) 可用
     let acts = legalActions(st);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(false);
-    expect(acts.some((x) => x.kind === 'skill' && x.skill === 'shield_block')).toBe(true);
-    // a 普攻 → 攒到 1 能量
-    st = applyAction(st, { kind: 'attack', target: { team: 'b', id: 'Onix' } }).state;
+    expect(acts.some((x) => x.kind === 'skill' && x.skill === 'stone_skin')).toBe(true);
+    // 普攻命中才攒能量：反复打直到一次命中，能量应升到 1（其余角色普攻推进回合）
+    st = attackUntilHit(st, 'a', 'Onix', 'b', 'Onix');
     expect(st.teams.a[0]!.energy).toBe(1);
   });
 
@@ -141,18 +142,19 @@ describe('能量系统（普攻攒能、技能耗能）', () => {
     const a = mk('Onix', 8, ['brave_strike']); // cost 1
     const b = mk('Onix', 15);
     let st = firstTurnOf(a, b, 'a');
-    // a 普攻攒 1 能量，b 普攻
-    st = applyAction(st, { kind: 'attack', target: { team: 'b', id: 'Onix' } }).state;
-    st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Onix' } }).state;
-    // 回到 a，能量 1，可放 brave
-    expect(currentFighter(st)!.team).toBe('a');
-    expect(st.teams.a[0]!.energy).toBe(1);
+    // a 普攻命中攒 1 能量（命中才回，反复打到命中并回到 a 的回合）
+    st = attackUntilHit(st, 'a', 'Onix', 'b', 'Onix');
+    while (currentFighter(st)!.team !== 'a') {
+      st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Onix' } }).state;
+    }
+    expect(st.teams.a[0]!.energy).toBeGreaterThanOrEqual(1);
     const brave = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'brave_strike',
     )!;
     expect(brave.usable).toBe(true);
+    const before = st.teams.a[0]!.energy;
     st = applyAction(st, brave.action).state;
-    expect(st.teams.a[0]!.energy).toBe(0); // 扣掉
+    expect(st.teams.a[0]!.energy).toBe(before - 1); // 扣 1
   });
 
   it('能量不足时技能标 usable:false + 理由"能量不足"', () => {
@@ -197,6 +199,33 @@ function firstTurnOf(a: Combatant, b: Combatant, team: 'a' | 'b'): BattleState {
   throw new Error('找不到让该队先手的种子');
 }
 
+/**
+ * 让 (atkTeam,atkId) 反复普攻 (defTeam,defId)，直到一次命中并回到攻击者回合。
+ * 用于"命中才回能量"的测试（单次普攻可能 miss）。非攻击者回合则用普攻推进。
+ */
+function attackUntilHit(
+  st: BattleState,
+  atkTeam: 'a' | 'b',
+  atkId: string,
+  defTeam: 'a' | 'b',
+  defId: string,
+): BattleState {
+  for (let i = 0; i < 100; i++) {
+    const cur = currentFighter(st)!;
+    if (cur.team === atkTeam && cur.id === atkId) {
+      const r = applyAction(st, { kind: 'attack', target: { team: defTeam, id: defId } });
+      st = r.state;
+      if (r.events.some((e) => e.t === 'hit' && e.hit)) return st;
+    } else {
+      // 其他角色普攻推进回合
+      const enemy = cur.team === 'a' ? { team: 'b' as const, id: defTeam === 'b' ? defId : atkId } : { team: 'a' as const, id: defTeam === 'a' ? defId : atkId };
+      st = applyAction(st, { kind: 'attack', target: enemy }).state;
+    }
+    if (isOver(st)) return st;
+  }
+  return st;
+}
+
 // ─────────────────────────────── 3v3 ───────────────────────────────
 
 import { chooseAction } from './ai.js';
@@ -235,11 +264,12 @@ describe('3v3 对局', () => {
     expect(state.winner === 'a' || state.winner === 'b' || state.winner === null).toBe(true);
   });
 
-  it('结束时至少一方全员阵亡', () => {
+  it('结束时至少一方全员出局（倒地或彻底死亡）', () => {
     const { state } = auto3v3(13);
-    const aAllDead = state.teams.a.every((f) => f.dead);
-    const bAllDead = state.teams.b.every((f) => f.dead);
-    expect(aAllDead || bAllDead).toBe(true);
+    const out = (f: { downed: boolean; dead: boolean }) => f.downed || f.dead;
+    const aAllOut = state.teams.a.every(out);
+    const bAllOut = state.teams.b.every(out);
+    expect(aAllOut || bAllOut).toBe(true);
   });
 
   it('确定性：相同种子同样的 3v3 过程', () => {

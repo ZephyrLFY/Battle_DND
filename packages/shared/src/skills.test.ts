@@ -17,10 +17,10 @@ describe('技能池静态定义', () => {
     }
   });
 
-  it('分阶：3 戏法(cost0) / 1 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
+  it('分阶：2 戏法(cost0) / 2 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
     const byCost = (c: number) => ALL_SKILL_IDS.filter((id) => SKILLS[id].cost === c);
-    expect(byCost(0)).toHaveLength(3);
-    expect(byCost(1)).toHaveLength(1); // 英勇打击
+    expect(byCost(0)).toHaveLength(2); // 石化/精准
+    expect(byCost(1)).toHaveLength(2); // 英勇打击/护盾格挡
     expect(byCost(2)).toHaveLength(5); // 眩晕/疾风/战吼/烈焰/治疗
     expect(byCost(3)).toHaveLength(2); // 蓄力/复活
     // 戏法都是 Lv1 解锁

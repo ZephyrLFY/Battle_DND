@@ -56,9 +56,9 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
 
   // —— 防御姿态（self）——
   shield_block: (ctx) => {
-    ctx.actor.acBonus += 5;
+    ctx.actor.acBonus += 3;
     ctx.actor.thorns = 1;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '本回合 AC+5 并反弹伤害' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '本回合 AC+3 并反弹伤害' });
   },
   stone_skin: (ctx) => {
     const r = roll(ctx.rng, '1d6');
@@ -79,6 +79,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     if (!t || t.dead || !t.downed) return; // 仅对倒地者生效
     const r = roll(ctx.rng, '1d8');
     t.downed = false;
+    t.downedTurns = 0;
     t.hp = Math.min(t.stats.maxHp, Math.max(1, r.total));
     ctx.emit({ t: 'revive', who: ref(t), hpLeft: t.hp });
   },

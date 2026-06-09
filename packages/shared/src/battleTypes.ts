@@ -34,9 +34,11 @@ export interface FighterRT {
   energy: number;
 
   // —— 状态 ——
-  /** 倒地：HP≤0 但未彻底死亡，不能行动，可被救活。 */
+  /** 倒地：HP≤0 但未彻底死亡，不能行动、不可被补刀，可被复活术救回。 */
   downed: boolean;
-  /** 彻底死亡：移出战斗与先攻序列。 */
+  /** 倒地已持续几个"本方回合"。达阈值仍未被救 → 转彻底死亡。复活时重置 0。 */
+  downedTurns: number;
+  /** 彻底死亡：移出战斗与先攻序列，不可再救。 */
   dead: boolean;
   /** 剩余昏迷回合（被眩晕）。>0 时本方回合被跳过。 */
   stunned: number;

@@ -77,8 +77,8 @@ describe('技能学习', () => {
   });
 
   it('Lv1 戏法可学；学后从可学列表移除', () => {
-    const p = learnSkill(newCombatant('Onix'), 'shield_block'); // 戏法 Lv1
-    expect(p.skills).toContain('shield_block');
+    const p = learnSkill(newCombatant('Onix'), 'stone_skin'); // 戏法 Lv1
+    expect(p.skills).toContain('stone_skin');
     expect(learnableSkills(p)).toHaveLength(10);
   });
 
@@ -119,8 +119,8 @@ describe('技能学习', () => {
   });
 
   it('重复学 / 未知技能抛错', () => {
-    const p = learnSkill(newCombatant('Onix'), 'shield_block');
-    expect(() => learnSkill(p, 'shield_block')).toThrow();
+    const p = learnSkill(newCombatant('Onix'), 'stone_skin');
+    expect(() => learnSkill(p, 'stone_skin')).toThrow();
     expect(() => learnSkill(p, 'nope')).toThrow();
   });
 });

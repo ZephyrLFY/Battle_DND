@@ -52,6 +52,7 @@ function mkFighter(team: Side, c: Combatant): FighterRT {
     skills: [...c.skills],
     energy: 0, // 从 0 起，普攻命中攒能量
     downed: false,
+    downedTurns: 0,
     dead: false,
     stunned: 0,
     stoneTurns: 0,
@@ -166,7 +167,7 @@ export function allActions(state: BattleState, ref?: FighterRef): ActionOption[]
   const blocked = !isTurn || f.downed || f.stunned > 0;
   const blockReason = !isTurn ? '等待回合' : f.downed ? '倒地' : f.stunned > 0 ? '昏迷中' : undefined;
 
-  const enemies = aliveOf(state, otherSide(f.team)).filter((e) => !e.downed);
+  const enemies = aliveOf(state, otherSide(f.team)).filter((e) => !e.downed); // 倒地不可补刀
   const defaultEnemy = enemies[0];
 
   const opts: ActionOption[] = [];
@@ -195,6 +196,7 @@ export function defaultTargets(
   actor: FighterRT,
   tt: TargetType,
 ): FighterRef[] {
+  // 敌方目标排除倒地者（倒地不可补刀，只能靠复活术救回或全倒判负）。
   const enemies = aliveOf(state, otherSide(actor.team)).filter((e) => !e.downed);
   const allies = aliveOf(state, actor.team);
   const downedAllies = allies.filter((a) => a.downed);
@@ -217,7 +219,7 @@ export function defaultTargets(
 
 /** 合法目标集合（UI 选目标时高亮用）。 */
 export function legalTargets(state: BattleState, actor: FighterRT, tt: TargetType): FighterRef[] {
-  const enemies = aliveOf(state, otherSide(actor.team)).filter((e) => !e.downed);
+  const enemies = aliveOf(state, otherSide(actor.team)).filter((e) => !e.downed); // 倒地不可补刀
   const allies = aliveOf(state, actor.team);
   switch (tt) {
     case 'self':
@@ -263,7 +265,14 @@ export function applyAction(
   if (actor.rallyTurns > 0) actor.rallyTurns--;
 
   if (actor.downed) {
-    emit({ t: 'skip', who: refOf(actor), why: 'downed' });
+    // 倒地者轮到回合：累计倒地回合，超过阈值仍未被救 → 彻底死亡（移出序列）
+    actor.downedTurns++;
+    if (actor.downedTurns >= DOWNED_TO_DEAD_TURNS) {
+      actor.dead = true;
+      emit({ t: 'dead', who: refOf(actor) });
+    } else {
+      emit({ t: 'skip', who: refOf(actor), why: 'downed' });
+    }
   } else if (actor.stunned > 0) {
     actor.stunned--;
     emit({ t: 'skip', who: refOf(actor), why: 'stunned' });
@@ -274,11 +283,12 @@ export function applyAction(
   // 结算倒地/死亡
   settleCasualties(next, emit);
 
-  // 胜负检查
-  const aDead = next.teams.a.every((f) => f.dead);
-  const bDead = next.teams.b.every((f) => f.dead);
-  if (aDead || bDead) {
-    next.winner = aDead && bDead ? null : aDead ? 'b' : 'a';
+  // 胜负检查：一方全员倒地（或彻底死亡）→ 立即判负（不等复活）。
+  const out = (f: { downed: boolean; dead: boolean }) => f.downed || f.dead;
+  const aOut = next.teams.a.every(out);
+  const bOut = next.teams.b.every(out);
+  if (aOut || bOut) {
+    next.winner = aOut && bOut ? null : aOut ? 'b' : 'a';
     emit({ t: 'end', winner: next.winner });
     next.rngCursor = rng.cursor;
     return { state: next, events };
@@ -293,7 +303,7 @@ export function applyAction(
 function validate(state: BattleState, actor: FighterRT, action: Action): Action {
   if (action.kind === 'attack') {
     const t = find(state, action.target);
-    if (t && !t.dead && !t.downed && t.team !== actor.team) return action;
+    if (t && !t.dead && !t.downed && t.team !== actor.team) return action; // 倒地不可补刀
     const e = aliveOf(state, otherSide(actor.team)).find((x) => !x.downed);
     return e ? { kind: 'attack', target: refOf(e) } : action;
   }
@@ -316,10 +326,10 @@ function perform(
   if (action.kind === 'attack') {
     emit({ t: 'action', who: refOf(actor), action });
     const target = find(state, action.target);
-    if (target) doAttack(state, actor, target, rng, emit, { charged: actor.charged });
+    const hit = target ? doAttack(state, actor, target, rng, emit, { charged: actor.charged }) : false;
     actor.charged = false;
-    // 普攻攒能量：+1（上限 maxEnergy）。这让"想放大招得先普攻"，普攻不被废弃。
-    if (actor.energy < actor.stats.maxEnergy) {
+    // 普攻攒能量：命中才 +1（上限 maxEnergy）。miss 不回，攒能量有风险。
+    if (hit && actor.energy < actor.stats.maxEnergy) {
       actor.energy = Math.min(actor.stats.maxEnergy, actor.energy + 1);
       emit({ t: 'energy', who: refOf(actor), delta: 1, now: actor.energy });
     }
@@ -351,6 +361,7 @@ function perform(
 // 共享攻击 / 伤害 / 回复管线
 // ─────────────────────────────────────────────────────────────────────────
 
+/** 返回是否命中（用于"普攻命中才回能量"）。 */
 function doAttack(
   state: BattleState,
   actor: FighterRT,
@@ -358,8 +369,8 @@ function doAttack(
   rng: Rng,
   emit: (e: BattleEvent) => void,
   mods: AttackMods,
-): void {
-  if (target.dead) return;
+): boolean {
+  if (target.dead) return false;
   const rallyBonus = actor.rallyTurns > 0 ? 2 : 0;
   const hitBonus = actor.stats.toHit + (mods.brave ? 2 : 0) + (mods.extraHitBonus ?? 0) + rallyBonus;
   const ar = mods.advantage ? attackRollAdvantage(rng, hitBonus, 'adv') : attackRoll(rng, hitBonus);
@@ -381,7 +392,7 @@ function doAttack(
 
   if (!hit) {
     maybeThorns(actor, target, rng, emit);
-    return;
+    return false;
   }
 
   // 法术加强：蓄力 4d6、英勇 3d6、AOE 2d6、普攻 1d6（让消耗能量更值）
@@ -411,13 +422,16 @@ function doAttack(
   }
 
   maybeThorns(actor, target, rng, emit);
+  return true;
 }
 
-function maybeThorns(actor: FighterRT, target: FighterRT, rng: Rng, emit: (e: BattleEvent) => void): void {
+function maybeThorns(actor: FighterRT, target: FighterRT, _rng: Rng, emit: (e: BattleEvent) => void): void {
   if (target.thorns > 0 && !actor.downed && !actor.dead) {
-    const r = roll(rng, '1d4');
-    actor.hp = Math.max(0, actor.hp - r.total);
-    emit({ t: 'thorns', to: refOf(actor), roll: r, dealt: r.total, hpLeft: actor.hp });
+    // 反弹固定 1，且用掉一层（只反弹下一次攻击，不再整回合无限反弹）
+    target.thorns--;
+    const dealt = 1;
+    actor.hp = Math.max(0, actor.hp - dealt);
+    emit({ t: 'thorns', to: refOf(actor), roll: { spec: '1', rolls: [1], bonus: 0, total: 1 }, dealt, hpLeft: actor.hp });
   }
 }
 
@@ -434,21 +448,20 @@ function applyHeal(who: FighterRT, amount: number, r: RollDetail, emit: (e: Batt
 // ─────────────────────────────────────────────────────────────────────────
 
 /** 结算本步造成的倒地/死亡：HP≤0 → 倒地；已倒地再受击(HP仍0) → 彻底死亡移出 order。 */
+/** 倒地多少个"本方回合"未被救 → 转为彻底死亡。 */
+export const DOWNED_TO_DEAD_TURNS = 3;
+
 function settleCasualties(state: BattleState, emit: (e: BattleEvent) => void): void {
   for (const f of [...state.teams.a, ...state.teams.b]) {
     if (f.dead) continue;
-    if (f.hp <= 0) {
-      if (!f.downed) {
-        f.downed = true;
-        emit({ t: 'downed', who: refOf(f) });
-      } else {
-        // 倒地状态下再被打到 0 → 彻底死亡
-        f.dead = true;
-        emit({ t: 'dead', who: refOf(f) });
-      }
+    // HP≤0 且未倒地 → 倒地（不能行动，可被复活术救回；不可被补刀）
+    if (f.hp <= 0 && !f.downed) {
+      f.downed = true;
+      f.downedTurns = 0;
+      emit({ t: 'downed', who: refOf(f) });
     }
   }
-  // 从先攻序列移除已死亡者（保持 turnIndex 指向不越界由 advanceTurn 处理）
+  // 仅彻底死亡者从先攻序列移除；倒地者保留在序列（轮到时被跳过 + 累计 downedTurns）
   const deadKeys = new Set(
     [...state.teams.a, ...state.teams.b].filter((f) => f.dead).map((f) => key(refOf(f))),
   );
