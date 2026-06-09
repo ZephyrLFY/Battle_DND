@@ -72,9 +72,11 @@ export function deriveStats(ab: Abilities, level: number): DerivedStats {
   const pro = proficiency(lvl);
   const perLevelHp = Math.max(1, 8 + conMod);
   return {
-    ac: 10 + dexMod,
+    // DEX 加成放大：高 DEX 的闪避更顶用（平衡：纯 STR 攻击不再轻易碾压堆 DEX）
+    ac: 10 + dexMod + Math.floor(dexMod / 2),
     toHit: strMod + pro,
-    dmgBonus: strMod,
+    // STR 伤害调整减半：堆 STR 仍强但不再 3 倍碾压（STR30 +10→+5）
+    dmgBonus: Math.ceil(strMod / 2),
     maxHp: perLevelHp * lvl,
     initiative: dexMod,
     maxEnergy: 3 + Math.floor(lvl / 4),

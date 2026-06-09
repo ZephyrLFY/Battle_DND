@@ -48,13 +48,23 @@ describe('名册 — 公平性', () => {
 });
 
 describe('deriveStats — 战斗数值派生', () => {
-  it('AC = 10 + DEX_mod', () => {
-    expect(deriveStats({ str: 10, dex: 16, con: 10 }, 1).ac).toBe(13);
+  it('AC = 10 + DEX_mod + floor(DEX_mod/2)（DEX 加成放大）', () => {
+    // DEX16 → mod+3 → AC = 10+3+1 = 14
+    expect(deriveStats({ str: 10, dex: 16, con: 10 }, 1).ac).toBe(14);
+    // DEX10 → mod0 → AC 10
+    expect(deriveStats({ str: 10, dex: 10, con: 10 }, 1).ac).toBe(10);
   });
 
   it('toHit = STR_mod + PRO', () => {
     // STR16 → +3，Lv5 PRO +3 → toHit 6
     expect(deriveStats({ str: 16, dex: 10, con: 10 }, 5).toHit).toBe(6);
+  });
+
+  it('dmgBonus = ceil(STR_mod/2)（STR 伤害减半）', () => {
+    // STR30 → mod+10 → dmgBonus ceil(10/2) = 5
+    expect(deriveStats({ str: 30, dex: 10, con: 10 }, 1).dmgBonus).toBe(5);
+    // STR16 → mod+3 → ceil(3/2) = 2
+    expect(deriveStats({ str: 16, dex: 10, con: 10 }, 1).dmgBonus).toBe(2);
   });
 
   it('maxHp = (8 + CON_mod) * level', () => {
