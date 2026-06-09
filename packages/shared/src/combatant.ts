@@ -26,7 +26,7 @@ export const ABILITY_LABEL: Record<AbilityKey, string> = {
 };
 
 export const MAX_LEVEL = 15;
-export const MAX_ABILITY = 20;
+export const MAX_ABILITY = 30;
 /** 每升一级获得的可分配属性点。 */
 export const POINTS_PER_LEVEL = 2;
 

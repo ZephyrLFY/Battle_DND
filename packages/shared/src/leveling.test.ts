@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newCombatant, abilitiesOf } from './combatant.js';
+import { newCombatant, abilitiesOf, MAX_ABILITY } from './combatant.js';
 import {
   totalPoints,
   spentPoints,
@@ -44,8 +44,10 @@ describe('allocate — 加点', () => {
     expect(() => allocate(p, 'str', 3)).toThrow();
   });
 
-  it('属性不能超过 20', () => {
-    const p = { ...newCombatant('Muk'), level: 15 }; // CON 已 20
+  it('属性不能超过上限 MAX_ABILITY', () => {
+    // Muk 天赋 CON 20；加到上限（30）后再加应抛错
+    let p = { ...newCombatant('Muk'), level: 15 }; // Lv15 → 28 点足够把 CON 顶满
+    while (20 + p.allocations.con < MAX_ABILITY) p = allocate(p, 'con', 1);
     expect(() => allocate(p, 'con', 1)).toThrow();
   });
 

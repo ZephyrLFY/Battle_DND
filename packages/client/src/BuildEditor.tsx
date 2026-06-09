@@ -8,6 +8,7 @@ import {
   ABILITY_LABEL,
   SKILLS,
   MAX_EQUIPPED_SKILLS,
+  MAX_ABILITY,
   newCombatant,
   statsOf,
   abilitiesOf,
@@ -71,7 +72,7 @@ export function BuildEditor({
             key={k}
             akey={k}
             value={abil[k]}
-            canAdd={pts > 0 && abil[k] < 20}
+            canAdd={pts > 0 && abil[k] < MAX_ABILITY}
             canSub={poke.allocations[k] > 0}
             onAdd={() => onChange(allocate(poke, k, 1))}
             onSub={() => onChange(allocate(poke, k, -1))}
