@@ -94,22 +94,22 @@ describe('deriveStats — 战斗数值派生', () => {
 
 describe('newCombatant / statsOf', () => {
   it('新角色 1 级、0 经验、属性=天赋、无技能', () => {
-    const c = newCombatant('Pikachu');
-    expect(c).toMatchObject({ archetypeId: 'Pikachu', level: 1, exp: 0, skills: [] });
+    const c = newCombatant('TralaleroTralala');
+    expect(c).toMatchObject({ archetypeId: 'TralaleroTralala', level: 1, exp: 0, skills: [] });
     expect(c.allocations).toEqual({ str: 0, dex: 0, con: 0 });
     // 当前属性 = 天赋（未加点）
-    expect(abilitiesOf(c)).toEqual(ROSTER['Pikachu']!.talent);
+    expect(abilitiesOf(c)).toEqual(ROSTER['TralaleroTralala']!.talent);
   });
 
-  it('Pikachu（高DEX）AC 高于 Muk（低DEX）', () => {
-    const pika = statsOf(newCombatant('Pikachu'));
-    const muk = statsOf(newCombatant('Muk'));
+  it('Tralalero（高DEX）AC 高于 Lirilì（低DEX）', () => {
+    const pika = statsOf(newCombatant('TralaleroTralala'));
+    const muk = statsOf(newCombatant('LiriliLarila'));
     expect(pika.ac).toBeGreaterThan(muk.ac);
   });
 
-  it('Muk（极致CON）HP 高于 Pikachu', () => {
-    const pika = statsOf(newCombatant('Pikachu'));
-    const muk = statsOf(newCombatant('Muk'));
+  it('Lirilì（极致CON）HP 高于 Tralalero', () => {
+    const pika = statsOf(newCombatant('TralaleroTralala'));
+    const muk = statsOf(newCombatant('LiriliLarila'));
     expect(muk.maxHp).toBeGreaterThan(pika.maxHp);
   });
 

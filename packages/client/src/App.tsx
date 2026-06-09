@@ -74,6 +74,17 @@ export function App() {
               />
               自动战斗
             </label>
+            <label className="auto-toggle">
+              速度
+              <select
+                value={battle.speed}
+                onChange={(e) => battle.setSpeed(e.target.value as typeof battle.speed)}
+              >
+                <option value="1x">1x</option>
+                <option value="2x">2x</option>
+                <option value="instant">瞬间</option>
+              </select>
+            </label>
           </div>
           <div className="log" ref={logRef}>
             {battle.log.map((l, i) => (
@@ -120,7 +131,13 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
   return (
     <div className="action-panel">
       <div className="ap-title">
-        {battle.auto ? '自动战斗中…' : actorName ? `${actorName} 的回合` : '你的回合'}
+        {battle.playing
+          ? '战斗回放中…'
+          : battle.auto
+            ? '自动战斗中…'
+            : actorName
+              ? `${actorName} 的回合`
+              : '你的回合'}
         <span className="ap-slots">⚡ 能量 {battle.myEnergy}</span>
       </div>
       <div className="ap-buttons">
@@ -140,7 +157,7 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
       </div>
       {waiting && !battle.auto && (
         <div className="ap-overlay">
-          <span>敌方行动中…</span>
+          <span>{battle.playing ? '战斗回放中…' : '敌方行动中…'}</span>
         </div>
       )}
     </div>

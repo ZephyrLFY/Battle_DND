@@ -19,6 +19,8 @@ import { statsOf, type Combatant } from './combatant.js';
 import { archetypeName } from './roster.js';
 import { skillDef, type SkillId, type TargetType } from './skills.js';
 import { skillEffect } from './effects.js';
+import { passiveOf, getStack, setStack, ACTED_KEY, BASIC_DONE_KEY } from './passives.js';
+import type { DerivedStats } from './combatant.js';
 import {
   otherSide,
   refEq,
@@ -31,6 +33,7 @@ import {
   type FighterPublic,
   type AttackMods,
   type EffectCtx,
+  type PassiveCtx,
 } from './battleTypes.js';
 
 export * from './battleTypes.js';
@@ -61,6 +64,11 @@ function mkFighter(team: Side, c: Combatant): FighterRT {
     thorns: 0,
     charged: false,
     rallyTurns: 0,
+    hitPenaltyTurns: 0,
+    hitPenaltyAmt: 0,
+    controlImmuneTurns: 0,
+    extraTurns: 0,
+    passiveState: {},
   };
 }
 
@@ -93,10 +101,11 @@ export function createBattle(
   const b = teamB.map((c) => mkFighter('b', c));
   const all = [...a, ...b];
 
-  // 先攻：每人掷 1d20 + DEX_mod，降序；平手按 a 队优先、再按入场序（稳定）
+  // 先攻：每人掷 1d20 + DEX_mod (+ 被动先攻加值)，降序；平手按 a 队优先、再按入场序（稳定）
   const initiative: Record<string, RollDetail> = {};
   const scored = all.map((f, idx) => {
-    const r = roll(rng, '1d20', f.stats.initiative);
+    const bonus = passiveOf(f.archetypeId)?.initiativeBonus ?? 0;
+    const r = roll(rng, '1d20', f.stats.initiative + bonus);
     initiative[key(refOf(f))] = r;
     return { f, total: r.total, idx };
   });
@@ -263,6 +272,18 @@ export function applyAction(
   // 衰减"回合开始"生效的临时态
   if (actor.stoneTurns > 0) actor.stoneTurns--;
   if (actor.rallyTurns > 0) actor.rallyTurns--;
+  if (actor.hitPenaltyTurns > 0) {
+    actor.hitPenaltyTurns--;
+    if (actor.hitPenaltyTurns === 0) actor.hitPenaltyAmt = 0;
+  }
+  if (actor.controlImmuneTurns > 0) actor.controlImmuneTurns--;
+
+  // 被动 onTurnStart（倒地/昏迷者不触发）。先让被动读上一回合的 __acted，再清零本回合。
+  if (!actor.downed && actor.stunned <= 0) {
+    passiveOf(actor.archetypeId)?.onTurnStart?.(passiveCtx(next, actor, rng, emit));
+    setStack(actor, ACTED_KEY, 0);
+    setStack(actor, BASIC_DONE_KEY, 0); // 重置「本回合是否已普攻」（Tralalero 首击必中）
+  }
 
   if (actor.downed) {
     // 倒地者轮到回合：累计倒地回合，超过阈值仍未被救 → 彻底死亡（移出序列）
@@ -281,7 +302,7 @@ export function applyAction(
   }
 
   // 结算倒地/死亡
-  settleCasualties(next, emit);
+  settleCasualties(next, emit, rng);
 
   // 胜负检查：一方全员倒地（或彻底死亡）→ 立即判负（不等复活）。
   const out = (f: { downed: boolean; dead: boolean }) => f.downed || f.dead;
@@ -323,6 +344,9 @@ function perform(
   rng: Rng,
   emit: (e: BattleEvent) => void,
 ): void {
+  // 标记本回合已行动（供「上回合是否行动」类被动用，如 Tung 的敲击清空判定）。
+  setStack(actor, ACTED_KEY, 1);
+
   if (action.kind === 'attack') {
     emit({ t: 'action', who: refOf(actor), action });
     const target = find(state, action.target);
@@ -346,15 +370,50 @@ function perform(
   const targets = action.targets
     .map((r) => find(state, r))
     .filter((f): f is FighterRT => !!f);
+  // 耗能技能（cost>0）打出的攻击标记 fromSpell：供被动区分法术 vs 普攻/戏法（Bombombini 引信）。
+  const fromSpell = def.cost > 0;
   const ctx: EffectCtx = {
     actor,
     targets,
     rng,
     emit,
-    attack: (target, mods) => doAttack(state, actor, target, rng, emit, mods ?? {}),
-    heal: (who, amount, r) => applyHeal(who, amount, r, emit),
+    attack: (target, mods) => doAttack(state, actor, target, rng, emit, { ...(mods ?? {}), fromSpell }),
+    heal: (who, amount, r) => applyHeal(state, who, amount, r, emit, rng, actor),
   };
   skillEffect(action.skill)(ctx);
+
+  // 耗能技能释放后：触发本角色被动的「施法后」清理（Bombombini 引爆火药）。
+  if (fromSpell) {
+    passiveOf(actor.archetypeId)?.onCastSpell?.(passiveCtx(state, actor, rng, emit), action.skill);
+  }
+
+  // 友方被动 onAllySupport：施法者放了 support 技能后，其每个存活友方（非自己）触发。
+  if (def.category === 'support') {
+    for (const ally of aliveOf(state, actor.team)) {
+      if (ally.id === actor.id) continue;
+      passiveOf(ally.archetypeId)?.onAllySupport?.(passiveCtx(state, ally, rng, emit), actor, action.skill);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 被动分发
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 构造一个被动上下文。 */
+function passiveCtx(
+  state: BattleState,
+  self: FighterRT,
+  rng: Rng,
+  emit: (e: BattleEvent) => void,
+): PassiveCtx {
+  return { self, state, rng, emit };
+}
+
+/** 取 fighter 经被动 modifyStats 调整后的有效属性（读时纯函数，不存储）。 */
+function effStats(state: BattleState, f: FighterRT, rng: Rng, emit: (e: BattleEvent) => void): DerivedStats {
+  const p = passiveOf(f.archetypeId);
+  return p?.modifyStats ? p.modifyStats(f.stats, passiveCtx(state, f, rng, emit)) : f.stats;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -371,13 +430,26 @@ function doAttack(
   mods: AttackMods,
 ): boolean {
   if (target.dead) return false;
+  // 被动 modifyStats：攻方 toHit/dmgBonus、守方 ac 均走有效属性（读时纯函数）。
+  const actorStats = effStats(state, actor, rng, emit);
+  const targetStats = effStats(state, target, rng, emit);
   const rallyBonus = actor.rallyTurns > 0 ? 2 : 0;
-  const hitBonus = actor.stats.toHit + (mods.brave ? 2 : 0) + (mods.extraHitBonus ?? 0) + rallyBonus;
+  const penalty = actor.hitPenaltyTurns > 0 ? actor.hitPenaltyAmt : 0;
+  const hitBonus = actorStats.toHit + (mods.brave ? 2 : 0) + (mods.extraHitBonus ?? 0) + rallyBonus - penalty;
   const ar = mods.advantage ? attackRollAdvantage(rng, hitBonus, 'adv') : attackRoll(rng, hitBonus);
 
-  const targetAc = target.stats.ac + target.acBonus;
-  const autoHit = mods.charged || ar.nat20;
-  const hit = !ar.nat1 && (autoHit || ar.total >= targetAc);
+  // 首击必中（Tralalero 三足疾行）：每回合首次普攻（非法术、非 AOE）保证命中。
+  let firstStrike = false;
+  if (!mods.fromSpell && !mods.aoe && passiveOf(actor.archetypeId)?.firstBasicAutoHit) {
+    if (getStack(actor, BASIC_DONE_KEY) === 0) {
+      firstStrike = true;
+      setStack(actor, BASIC_DONE_KEY, 1);
+    }
+  }
+
+  const targetAc = targetStats.ac + target.acBonus;
+  const autoHit = mods.charged || ar.nat20 || firstStrike;
+  const hit = (!ar.nat1 || firstStrike) && (autoHit || ar.total >= targetAc);
   const crit = ar.nat20;
 
   emit({
@@ -391,6 +463,7 @@ function doAttack(
   });
 
   if (!hit) {
+    passiveOf(target.archetypeId)?.onMissed?.(passiveCtx(state, target, rng, emit), actor);
     maybeThorns(actor, target, rng, emit);
     return false;
   }
@@ -399,10 +472,20 @@ function doAttack(
   let dmgSpec = mods.charged ? '4d6' : mods.brave ? '3d6' : mods.aoe ? '2d6' : '1d6';
   if (crit) dmgSpec = doubleDice(dmgSpec);
   // AOE 不加 STR 伤害调整（已靠多目标 + 2d6 体现价值）
-  const dmgBonus = mods.aoe ? 0 : actor.stats.dmgBonus;
+  const dmgBonus = mods.aoe ? 0 : actorStats.dmgBonus;
   const dmgRoll = roll(rng, dmgSpec, dmgBonus);
 
   let raw = Math.max(0, dmgRoll.total);
+  // 被动 modifyOutgoingDamage（出伤乘区，石化减伤前应用，如 CA ×0.9）。
+  const actorPassive = passiveOf(actor.archetypeId);
+  if (actorPassive?.modifyOutgoingDamage) {
+    raw = Math.max(0, Math.floor(actorPassive.modifyOutgoingDamage(passiveCtx(state, actor, rng, emit), target, raw)));
+  }
+  // 被动 modifyIncomingDamage（守方常驻减伤，如 Bombardiro 装甲蒙皮）。
+  const targetPassive = passiveOf(target.archetypeId);
+  if (targetPassive?.modifyIncomingDamage) {
+    raw = Math.max(0, Math.floor(targetPassive.modifyIncomingDamage(passiveCtx(state, target, rng, emit), actor, raw)));
+  }
   let mitigated = 0;
   if (target.stoneTurns > 0) {
     mitigated = target.stoneAmount;
@@ -421,6 +504,12 @@ function doAttack(
     }
   }
 
+  // 命中被动钩子：攻方 onDealDamage、守方 onTakeHit（AOE 不触发单体被动，避免群体叠层失衡）。
+  if (!mods.aoe) {
+    actorPassive?.onDealDamage?.(passiveCtx(state, actor, rng, emit), target, raw, crit, !!mods.fromSpell);
+    passiveOf(target.archetypeId)?.onTakeHit?.(passiveCtx(state, target, rng, emit), actor, raw, crit);
+  }
+
   maybeThorns(actor, target, rng, emit);
   return true;
 }
@@ -435,11 +524,27 @@ function maybeThorns(actor: FighterRT, target: FighterRT, _rng: Rng, emit: (e: B
   }
 }
 
-/** 直接回复（治疗/复活效果用）。复活倒地者由调用方先清 downed。 */
-function applyHeal(who: FighterRT, amount: number, r: RollDetail, emit: (e: BattleEvent) => void): void {
+/**
+ * 直接回复（治疗/复活效果用）。复活倒地者由调用方先清 downed。
+ * 受者被动 modifyIncomingHeal 可增幅回复量（如 BC→CA 联动），source=施加者。
+ */
+function applyHeal(
+  state: BattleState,
+  who: FighterRT,
+  amount: number,
+  r: RollDetail,
+  emit: (e: BattleEvent) => void,
+  rng: Rng,
+  source?: FighterRT,
+): void {
   if (who.dead) return;
+  let amt = Math.max(0, amount);
+  const p = passiveOf(who.archetypeId);
+  if (p?.modifyIncomingHeal) {
+    amt = Math.max(0, Math.floor(p.modifyIncomingHeal(passiveCtx(state, who, rng, emit), source, amt)));
+  }
   const before = who.hp;
-  who.hp = Math.min(who.stats.maxHp, who.hp + Math.max(0, amount));
+  who.hp = Math.min(who.stats.maxHp, who.hp + amt);
   emit({ t: 'heal', who: refOf(who), roll: r, amount: who.hp - before, hpLeft: who.hp });
 }
 
@@ -451,11 +556,14 @@ function applyHeal(who: FighterRT, amount: number, r: RollDetail, emit: (e: Batt
 /** 倒地多少个"本方回合"未被救 → 转为彻底死亡。 */
 export const DOWNED_TO_DEAD_TURNS = 3;
 
-function settleCasualties(state: BattleState, emit: (e: BattleEvent) => void): void {
+function settleCasualties(state: BattleState, emit: (e: BattleEvent) => void, rng: Rng): void {
   for (const f of [...state.teams.a, ...state.teams.b]) {
     if (f.dead) continue;
-    // HP≤0 且未倒地 → 倒地（不能行动，可被复活术救回；不可被补刀）
+    // HP≤0 且未倒地 → 倒地。先给被动 onWouldGoDown veto（如 Trippi 九命）一次拦截机会：
+    // 覆盖一切致死来源（普攻/技能/AOE/反弹），返回 true 表示被动已把 hp 拉到 ≥1 → 不倒地。
     if (f.hp <= 0 && !f.downed) {
+      const vetoed = passiveOf(f.archetypeId)?.onWouldGoDown?.(passiveCtx(state, f, rng, emit)) ?? false;
+      if (vetoed && f.hp > 0) continue;
       f.downed = true;
       f.downedTurns = 0;
       emit({ t: 'downed', who: refOf(f) });
@@ -480,6 +588,12 @@ function settleCasualties(state: BattleState, emit: (e: BattleEvent) => void): v
 /** 推进到 order 里下一个能"占用回合"的角色（倒地者也占回合但会被跳过；dead 已移出）。 */
 function advanceTurn(state: BattleState): void {
   if (state.order.length === 0) return;
+  // 额外回合（Lirilì 时间静止）：当前行动者还有额外回合且仍能行动 → 不前进指针，本人再动一次。
+  const cur = currentFighter(state);
+  if (cur && cur.extraTurns > 0 && !cur.downed && !cur.dead) {
+    cur.extraTurns--;
+    return;
+  }
   const prev = state.turnIndex;
   state.turnIndex = (state.turnIndex + 1) % state.order.length;
   // 绕回到序列头 → round++
@@ -507,5 +621,6 @@ function cloneState(s: BattleState): BattleState {
 }
 
 function cloneFighter(f: FighterRT): FighterRT {
-  return { ...f, skills: [...f.skills], stats: { ...f.stats } };
+  // passiveState 必须深拷：否则克隆与原态共享同一对象，被动写栈会跨越纯函数边界、破坏确定性。
+  return { ...f, skills: [...f.skills], stats: { ...f.stats }, passiveState: { ...f.passiveState } };
 }

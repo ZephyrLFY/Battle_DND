@@ -15,7 +15,7 @@ import {
   type AbilityKey,
   type Combatant,
 } from './combatant.js';
-import { archetype } from './roster.js';
+import { archetype, signatureOwner } from './roster.js';
 import {
   ALL_SKILL_IDS,
   isSkillId,
@@ -68,11 +68,14 @@ export function skillBarFull(c: Combatant): boolean {
   return c.skills.length >= MAX_EQUIPPED_SKILLS;
 }
 
-/** 某技能能否学：未学过 + 等级达到解锁 + 技能栏未满。返回原因（可学时为 null）。 */
+/** 某技能能否学：未学过 + 等级达到解锁 + 非他人签名 + 技能栏未满。返回原因（可学时为 null）。 */
 export function learnBlockReason(c: Combatant, id: string): string | null {
   if (!isSkillId(id)) return '未知技能';
   if (c.skills.includes(id)) return '已学过';
   if (c.level < skillDef(id).unlockLevel) return `需 Lv${skillDef(id).unlockLevel}`;
+  // 签名技能仅本角色可学（占技能栏，与普通技能同栏）。
+  const owner = signatureOwner(id);
+  if (owner && owner !== c.archetypeId) return '专属技能';
   if (skillBarFull(c)) return `技能栏已满(${MAX_EQUIPPED_SKILLS})`;
   return null;
 }
@@ -81,9 +84,16 @@ export function canLearn(c: Combatant, id: string): boolean {
   return learnBlockReason(c, id) === null;
 }
 
-/** 还没学的技能（不论是否满足等级/栏位，UI 自行用 canLearn 区分可学/灰显）。 */
+/**
+ * 还没学的技能（不论是否满足等级/栏位，UI 自行用 canLearn 区分可学/灰显）。
+ * 他人的签名技能不出现在池里——只有拥有者能看到自己的签名技能。
+ */
 export function learnableSkills(c: Combatant): SkillId[] {
-  return ALL_SKILL_IDS.filter((id) => !c.skills.includes(id));
+  return ALL_SKILL_IDS.filter((id) => {
+    if (c.skills.includes(id)) return false;
+    const owner = signatureOwner(id);
+    return !owner || owner === c.archetypeId;
+  });
 }
 
 /** 学一个技能。校验：合法 + 未学 + 达到解锁等级 + 技能栏未满。返回新实例。 */

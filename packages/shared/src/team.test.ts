@@ -16,26 +16,26 @@ function team(ids: string[], lineup: number[]): Team {
 
 describe('队伍约束', () => {
   it('hasUniqueMembers：重复 archetypeId 为 false', () => {
-    expect(hasUniqueMembers(team(['Onix', 'Pikachu', 'Muk'], [0, 1, 2]))).toBe(true);
-    expect(hasUniqueMembers(team(['Onix', 'Onix'], [0, 1]))).toBe(false);
+    expect(hasUniqueMembers(team(['TrippiTroppi', 'TralaleroTralala', 'LiriliLarila'], [0, 1, 2]))).toBe(true);
+    expect(hasUniqueMembers(team(['TrippiTroppi', 'TrippiTroppi'], [0, 1]))).toBe(false);
   });
 
   it('canAddMember：已有的不能再加', () => {
-    const t = team(['Onix', 'Pikachu'], [0, 1]);
-    expect(canAddMember(t, 'Muk')).toBe(true);
-    expect(canAddMember(t, 'Onix')).toBe(false);
+    const t = team(['TrippiTroppi', 'TralaleroTralala'], [0, 1]);
+    expect(canAddMember(t, 'LiriliLarila')).toBe(true);
+    expect(canAddMember(t, 'TrippiTroppi')).toBe(false);
   });
 
   it('isLineupValid：人数对、下标有效、不重复', () => {
-    expect(isLineupValid(team(['Onix', 'Pikachu', 'Muk'], [0, 1, 2]))).toBe(true);
-    expect(isLineupValid(team(['Onix', 'Pikachu', 'Muk'], [0, 1]))).toBe(false); // 人数不足
-    expect(isLineupValid(team(['Onix', 'Pikachu', 'Muk'], [0, 0, 1]))).toBe(false); // 重复
-    expect(isLineupValid(team(['Onix', 'Pikachu', 'Muk'], [0, 1, 9]))).toBe(false); // 越界
+    expect(isLineupValid(team(['TrippiTroppi', 'TralaleroTralala', 'LiriliLarila'], [0, 1, 2]))).toBe(true);
+    expect(isLineupValid(team(['TrippiTroppi', 'TralaleroTralala', 'LiriliLarila'], [0, 1]))).toBe(false); // 人数不足
+    expect(isLineupValid(team(['TrippiTroppi', 'TralaleroTralala', 'LiriliLarila'], [0, 0, 1]))).toBe(false); // 重复
+    expect(isLineupValid(team(['TrippiTroppi', 'TralaleroTralala', 'LiriliLarila'], [0, 1, 9]))).toBe(false); // 越界
   });
 
   it('lineupMembers 取出战角色', () => {
-    const t = team(['Onix', 'Pikachu', 'Muk', 'Krabby'], [0, 2, 3]);
-    expect(lineupMembers(t).map((m) => m.archetypeId)).toEqual(['Onix', 'Muk', 'Krabby']);
+    const t = team(['TrippiTroppi', 'TralaleroTralala', 'LiriliLarila', 'BombombiniGusini'], [0, 2, 3]);
+    expect(lineupMembers(t).map((m) => m.archetypeId)).toEqual(['TrippiTroppi', 'LiriliLarila', 'BombombiniGusini']);
   });
 });
 

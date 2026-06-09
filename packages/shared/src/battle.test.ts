@@ -48,7 +48,7 @@ function firstEnemyRef(state: BattleState, team: 'a' | 'b'): FighterRef {
 
 describe('createBattle — 初始化', () => {
   it('start 事件含先攻明细，order 覆盖双方全员', () => {
-    const { state, events } = battle1v1(newCombatant('Onix'), newCombatant('Pikachu'), 1);
+    const { state, events } = battle1v1(newCombatant('TrippiTroppi'), newCombatant('TralaleroTralala'), 1);
     const start = events[0];
     expect(start?.t).toBe('start');
     if (start?.t === 'start') {
@@ -59,26 +59,26 @@ describe('createBattle — 初始化', () => {
   });
 
   it('HP 初始为各自 maxHp', () => {
-    const { state } = battle1v1(newCombatant('Muk'), newCombatant('Pikachu'), 1);
+    const { state } = battle1v1(newCombatant('LiriliLarila'), newCombatant('TralaleroTralala'), 1);
     const muk = state.teams.a[0]!;
     expect(muk.hp).toBe(muk.stats.maxHp);
   });
 
   it('空队报错', () => {
-    expect(() => createBattle([], [newCombatant('Onix')], 1)).toThrow();
+    expect(() => createBattle([], [newCombatant('TrippiTroppi')], 1)).toThrow();
   });
 });
 
 describe('确定性', () => {
   it('相同种子+相同自动流程 => 相同事件流', () => {
-    const r1 = autoRun(mk('Charmander', 8), mk('Onix', 8), 99);
-    const r2 = autoRun(mk('Charmander', 8), mk('Onix', 8), 99);
+    const r1 = autoRun(mk('CappuccinoAssassino', 8), mk('TrippiTroppi', 8), 99);
+    const r2 = autoRun(mk('CappuccinoAssassino', 8), mk('TrippiTroppi', 8), 99);
     expect(r1.events).toEqual(r2.events);
     expect(r1.state.winner).toBe(r2.state.winner);
   });
 
   it('applyAction 不修改传入 state（纯函数）', () => {
-    const { state } = battle1v1(newCombatant('Onix'), newCombatant('Pikachu'), 3);
+    const { state } = battle1v1(newCombatant('TrippiTroppi'), newCombatant('TralaleroTralala'), 3);
     const before = JSON.stringify(state);
     const cur = currentFighter(state)!;
     applyAction(state, { kind: 'attack', target: firstEnemyRef(state, cur.team) });
@@ -88,7 +88,7 @@ describe('确定性', () => {
 
 describe('战斗收敛与胜负', () => {
   it('普攻到底一定分出胜负，不触发安全上限', () => {
-    const { state } = autoRun(mk('Onix', 12), mk('Pikachu', 2), 7);
+    const { state } = autoRun(mk('TrippiTroppi', 12), mk('TralaleroTralala', 2), 7);
     expect(isOver(state)).toBe(true);
     expect(state.winner).not.toBeUndefined();
   });
@@ -96,15 +96,15 @@ describe('战斗收敛与胜负', () => {
   it('15级强者打1级弱者大概率获胜', () => {
     let wins = 0;
     for (let seed = 0; seed < 40; seed++) {
-      if (autoRun(mk('Onix', 15), mk('Pikachu', 1), seed).state.winner === 'a') wins++;
+      if (autoRun(mk('TrippiTroppi', 15), mk('TralaleroTralala', 1), seed).state.winner === 'a') wins++;
     }
     expect(wins).toBeGreaterThan(32);
   });
 
   it('结束后 legalActions 为空、applyAction 不再推进', () => {
-    const { state } = autoRun(mk('Onix', 15), mk('Pikachu', 1), 5);
+    const { state } = autoRun(mk('TrippiTroppi', 15), mk('TralaleroTralala', 1), 5);
     expect(legalActions(state)).toEqual([]);
-    const r = applyAction(state, { kind: 'attack', target: { team: 'b', id: 'Pikachu' } });
+    const r = applyAction(state, { kind: 'attack', target: { team: 'b', id: 'TralaleroTralala' } });
     expect(r.events).toEqual([]);
   });
 });
@@ -112,7 +112,7 @@ describe('战斗收敛与胜负', () => {
 describe('倒地与胜负（1v1 退化）', () => {
   it('对方被打至倒地即判负（倒地不可补刀，全员倒地立即结束）', () => {
     // 强者打弱者：弱者倒地的那一刻战斗结束（1v1 下对方全倒）
-    const { state, events } = autoRun(mk('Hitmonlee', 15, ['flurry']), mk('Pikachu', 1), 11);
+    const { state, events } = autoRun(mk('TungSahur', 15, ['flurry']), mk('TralaleroTralala', 1), 11);
     const downedIdx = events.findIndex((e) => e.t === 'downed');
     const endIdx = events.findIndex((e) => e.t === 'end');
     expect(downedIdx).toBeGreaterThanOrEqual(0); // 出现倒地
@@ -125,8 +125,8 @@ describe('倒地与胜负（1v1 退化）', () => {
 
 describe('能量系统（普攻攒能、技能耗能）', () => {
   it('能量从 0 起；普攻命中 +1；戏法(cost0)随时可用', () => {
-    const a = mk('Onix', 8, ['brave_strike', 'stone_skin']);
-    const b = mk('Onix', 15);
+    const a = mk('TrippiTroppi', 8, ['brave_strike', 'stone_skin']);
+    const b = mk('TrippiTroppi', 15);
     let st = firstTurnOf(a, b, 'a');
     expect(st.teams.a[0]!.energy).toBe(0);
     // 0 能量时 brave(cost1) 不可用，但 stone_skin(cost0 戏法) 可用
@@ -134,18 +134,18 @@ describe('能量系统（普攻攒能、技能耗能）', () => {
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(false);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'stone_skin')).toBe(true);
     // 普攻命中才攒能量：反复打直到一次命中，能量应升到 1（其余角色普攻推进回合）
-    st = attackUntilHit(st, 'a', 'Onix', 'b', 'Onix');
+    st = attackUntilHit(st, 'a', 'TrippiTroppi', 'b', 'TrippiTroppi');
     expect(st.teams.a[0]!.energy).toBe(1);
   });
 
   it('攒够能量后可放技能，放完能量扣除', () => {
-    const a = mk('Onix', 8, ['brave_strike']); // cost 1
-    const b = mk('Onix', 15);
+    const a = mk('TrippiTroppi', 8, ['brave_strike']); // cost 1
+    const b = mk('TrippiTroppi', 15);
     let st = firstTurnOf(a, b, 'a');
     // a 普攻命中攒 1 能量（命中才回，反复打到命中并回到 a 的回合）
-    st = attackUntilHit(st, 'a', 'Onix', 'b', 'Onix');
+    st = attackUntilHit(st, 'a', 'TrippiTroppi', 'b', 'TrippiTroppi');
     while (currentFighter(st)!.team !== 'a') {
-      st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Onix' } }).state;
+      st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'TrippiTroppi' } }).state;
     }
     expect(st.teams.a[0]!.energy).toBeGreaterThanOrEqual(1);
     const brave = allActions(st).find(
@@ -158,8 +158,8 @@ describe('能量系统（普攻攒能、技能耗能）', () => {
   });
 
   it('能量不足时技能标 usable:false + 理由"能量不足"', () => {
-    const a = mk('Onix', 8, ['brave_strike']);
-    const b = mk('Onix', 15);
+    const a = mk('TrippiTroppi', 8, ['brave_strike']);
+    const b = mk('TrippiTroppi', 15);
     const st = firstTurnOf(a, b, 'a'); // 能量 0
     const opt = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'brave_strike',
@@ -171,18 +171,18 @@ describe('能量系统（普攻攒能、技能耗能）', () => {
 
 describe('CON 被动吸血', () => {
   it('高CON角色命中造成伤害时回血', () => {
-    const a = mk('Muk', 10); // 高 CON
-    const b = mk('Pikachu', 1); // 脆皮，易命中
+    const a = mk('LiriliLarila', 10); // 高 CON
+    const b = mk('ChimpanziniBananini', 1); // 脆皮，易命中（不用 Tralalero：其被动先攻必先手）
     let st = firstTurnOf(a, b, 'a');
     st.teams.a[0]!.hp = 5; // 压低血量
     let sawLifesteal = false;
     for (let i = 0; i < 30 && !sawLifesteal; i++) {
       if (currentFighter(st)?.team === 'a') {
-        const r = applyAction(st, { kind: 'attack', target: { team: 'b', id: 'Pikachu' } });
+        const r = applyAction(st, { kind: 'attack', target: { team: 'b', id: 'ChimpanziniBananini' } });
         if (r.events.some((e) => e.t === 'lifesteal')) sawLifesteal = true;
         st = r.state;
       } else {
-        st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'Muk' } }).state;
+        st = applyAction(st, { kind: 'attack', target: { team: 'a', id: 'LiriliLarila' } }).state;
       }
       if (isOver(st)) break;
     }
@@ -230,8 +230,8 @@ function attackUntilHit(
 
 import { chooseAction } from './ai.js';
 
-const TEAM_A: Combatant[] = [mk('Hitmonlee', 10), mk('Onix', 10), mk('Pikachu', 10)];
-const TEAM_B: Combatant[] = [mk('Charmander', 10), mk('Muk', 10), mk('Krabby', 10)];
+const TEAM_A: Combatant[] = [mk('TungSahur', 10), mk('TrippiTroppi', 10), mk('TralaleroTralala', 10)];
+const TEAM_B: Combatant[] = [mk('CappuccinoAssassino', 10), mk('LiriliLarila', 10), mk('BombombiniGusini', 10)];
 
 /** 双方都用随机 AI 跑完整场 3v3。 */
 function auto3v3(seed: number) {
@@ -279,7 +279,7 @@ describe('3v3 对局', () => {
 
 describe('AOE / 团队技能', () => {
   it('烈焰风暴一次命中多个敌人（产生多条 hit/damage）', () => {
-    const caster: Combatant[] = [mk('Charmander', 10, ['firestorm'])];
+    const caster: Combatant[] = [mk('CappuccinoAssassino', 10, ['firestorm'])];
     const enemies = TEAM_B;
     let st = createBattle(caster, enemies, 0).state;
     // 试种子直到我方(a)先手
@@ -297,21 +297,21 @@ describe('AOE / 团队技能', () => {
   });
 
   it('治疗术回复友方生命', () => {
-    const allies: Combatant[] = [mk('Licktung', 10, ['heal']), mk('Onix', 10)];
-    let st = createBattle(allies, [mk('Pikachu', 1)], 0).state;
-    for (let seed = 0; seed < 200 && currentFighter(st)?.id !== 'Licktung'; seed++) {
-      st = createBattle(allies, [mk('Pikachu', 1)], seed).state;
+    const allies: Combatant[] = [mk('BrrBrrPatapim', 10, ['heal']), mk('TrippiTroppi', 10)];
+    let st = createBattle(allies, [mk('TralaleroTralala', 1)], 0).state;
+    for (let seed = 0; seed < 200 && currentFighter(st)?.id !== 'BrrBrrPatapim'; seed++) {
+      st = createBattle(allies, [mk('TralaleroTralala', 1)], seed).state;
     }
     // 压低队友血量
-    const ally = find(st, { team: 'a', id: 'Onix' })!;
+    const ally = find(st, { team: 'a', id: 'TrippiTroppi' })!;
     ally.hp = 5;
     st.teams.a[0]!.energy = 9; // 给够能量放 heal(cost1)
     const healOpt = allActions(st).find(
       (o) => o.action.kind === 'skill' && o.action.skill === 'heal',
     );
-    // 让治疗目标指向受伤的 Onix
+    // 让治疗目标指向受伤的 Trippi Troppi
     if (healOpt && healOpt.action.kind === 'skill') {
-      const r = applyAction(st, { kind: 'skill', skill: 'heal', targets: [{ team: 'a', id: 'Onix' }] });
+      const r = applyAction(st, { kind: 'skill', skill: 'heal', targets: [{ team: 'a', id: 'TrippiTroppi' }] });
       const heal = r.events.find((e) => e.t === 'heal');
       expect(heal?.t).toBe('heal');
       if (heal?.t === 'heal') expect(heal.hpLeft).toBeGreaterThan(5);

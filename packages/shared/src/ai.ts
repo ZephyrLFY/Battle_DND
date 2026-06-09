@@ -126,6 +126,47 @@ function evalAction(
       void hpRatio;
       return { action: { ...action, targets: defaultTargets(state, self, def.targetType) }, score: 0.05 };
     }
+    default:
+      // 通用兜底：未单独建模的技能（如各角色签名技能）按 category 启发式打分，
+      // 保证开箱即用、不漏返回路径。想精调某签名再在上面补 case。
+      return scoreByCategory(state, self, action, def, enemies, allies);
+  }
+}
+
+/** 按技能类别给一个未单独建模的技能打分（签名技能的通用兜底）。 */
+function scoreByCategory(
+  state: BattleState,
+  self: FighterRT,
+  action: Extract<Action, { kind: 'skill' }>,
+  def: ReturnType<typeof skillDef>,
+  enemies: FighterRT[],
+  allies: FighterRT[],
+): { action: Action; score: number } {
+  const targets = defaultTargets(state, self, def.targetType);
+  switch (def.category) {
+    case 'attack':
+    case 'multi_attack':
+    case 'charge': {
+      const target = pickAttackTarget(enemies, self);
+      if (!target) return { action, score: -1 };
+      // 多段/蓄力按 2 骰近似；命中价值 + 击杀加成。charge 略打折（要等）。
+      const dice = def.category === 'charge' ? 4 : def.category === 'multi_attack' ? 3 : 2;
+      let s = expectedDamage(self, target, dice) + killBonus(target, self, dice);
+      if (def.category === 'charge') s -= 3;
+      return { action: { kind: 'skill', skill: action.skill, targets: [ref(target)] }, score: s };
+    }
+    case 'aoe': {
+      const s = enemies.reduce((acc, e) => acc + expectedDamage(self, e, 2, /*aoe*/ true), 0);
+      return { action: { kind: 'skill', skill: action.skill, targets: enemies.map(ref) }, score: s };
+    }
+    case 'support': {
+      // 增益类：队友越多越值；给中等分（不抢救命/复活的高优先）。
+      const n = allies.filter((a) => !a.downed).length;
+      return { action: { kind: 'skill', skill: action.skill, targets }, score: 2 + n };
+    }
+    case 'defense':
+    default:
+      return { action: { kind: 'skill', skill: action.skill, targets }, score: 0.05 };
   }
 }
 

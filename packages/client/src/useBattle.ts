@@ -1,8 +1,14 @@
 /**
- * 回合制战斗 hook —— 驱动 shared 的 NvN 状态机（3v3）。
+ * 回合制战斗 hook —— 驱动 shared 的 NvN 状态机（3v3），带事件回放。
  *
- * 玩家固定是 a 队，敌方 b 由随机 AI。玩家选动作（两步：先动作，需选目标的再选目标）→
- * 推进 → 若轮到 b 或处于"自动"模式，自动用 AI 推进（带小延迟，让日志逐行出）。
+ * 玩家固定是 a 队，敌方 b 由 AI。引擎的 applyAction 一次原子算出 (新逻辑态, 事件流)；
+ * 本 hook 不再瞬时跳到终态，而是把事件**入队按节拍逐个回放**到一个「显示态 view」上，
+ * 让战斗有节奏（受击/倒地一步步发生）。可调速：1x / 2x / 瞬间（瞬间=旧的无动画行为）。
+ *
+ * 两个状态分离：
+ * - state：逻辑终态（引擎真相），决定可选动作、AI 决策。
+ * - view ：显示态（事件折叠出来的当前画面），BattleStage 渲染它。
+ * 回放进行中（队列未清空）锁输入；清空后若轮到 AI 或开了自动，再推进下一步。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -23,18 +29,22 @@ import {
   type TargetType,
 } from '@battle-pokemon/shared';
 import { eventToLines } from './battleLog.js';
+import { cloneView, applyEventToView } from './playback.js';
 
-const AI_DELAY_MS = 650;
+/** 回放速度：每个事件之间的间隔（ms）。instant=0 → 同步清空（等价旧无动画）。 */
+export type PlaybackSpeed = '1x' | '2x' | 'instant';
+const SPEED_MS: Record<PlaybackSpeed, number> = { '1x': 300, '2x': 150, instant: 0 };
+const AI_GAP_MS = 350; // 一步回放完到 AI 下一步之间的停顿
 
-/** 待选目标的"挂起动作"（两步选目标时用）。 */
 export interface PendingTarget {
   kind: 'attack' | 'skill';
   skill?: string;
   targetType: TargetType;
-  candidates: FighterRef[]; // 合法目标，UI 高亮可点
+  candidates: FighterRef[];
 }
 
 export interface UseBattle {
+  /** 显示态（回放当前帧）；BattleStage 渲染它。 */
   state: BattleState | null;
   log: string[];
   myTurn: boolean;
@@ -44,66 +54,128 @@ export interface UseBattle {
   winner: 'a' | 'b' | null;
   auto: boolean;
   pending: PendingTarget | null;
+  /** 回放进行中（动画播放中，输入锁定）。 */
+  playing: boolean;
+  speed: PlaybackSpeed;
   start: (teamA: Combatant[], teamB: Combatant[], seed: number) => void;
-  /** 选一个动作：不需要选目标的直接执行；需要的进入 pending 等待 chooseTarget。 */
   choose: (action: Action) => void;
-  /** 为 pending 动作选定目标并执行。 */
   chooseTarget: (target: FighterRef) => void;
   cancelPending: () => void;
   setAuto: (on: boolean) => void;
+  setSpeed: (s: PlaybackSpeed) => void;
 }
 
 export function useBattle(): UseBattle {
-  const [state, setState] = useState<BattleState | null>(null);
+  // 逻辑终态（引擎真相）
+  const logicRef = useRef<BattleState | null>(null);
+  // 显示态（回放帧）
+  const [view, setView] = useState<BattleState | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [auto, setAuto] = useState(false);
   const [pending, setPending] = useState<PendingTarget | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<PlaybackSpeed>('1x');
+
   const seedRef = useRef(0);
+  const speedRef = useRef<PlaybackSpeed>('1x');
+  speedRef.current = speed;
+
+  // 事件回放队列 + 当前折叠中的显示态
+  const queueRef = useRef<BattleEvent[]>([]);
+  const viewRef = useRef<BattleState | null>(null);
+  const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const appendEvents = useCallback((events: BattleEvent[]) => {
-    const lines = events.flatMap(eventToLines);
+  const clearTimers = useCallback(() => {
+    if (tickTimer.current) clearTimeout(tickTimer.current);
+    if (aiTimer.current) clearTimeout(aiTimer.current);
+    tickTimer.current = null;
+    aiTimer.current = null;
+  }, []);
+
+  /** 折叠一个事件到显示态 + 追加日志。 */
+  const foldOne = useCallback((ev: BattleEvent) => {
+    if (viewRef.current) {
+      applyEventToView(viewRef.current, ev);
+      setView(cloneView(viewRef.current)); // 新引用触发重渲染
+    }
+    const lines = eventToLines(ev);
     if (lines.length) setLog((prev) => [...prev, ...lines]);
   }, []);
 
+  /** 启动回放循环：按当前速度逐个出队折叠；瞬间档同步清空。清空后置 playing=false。 */
+  const drain = useCallback(() => {
+    const ms = SPEED_MS[speedRef.current];
+    if (ms === 0) {
+      // 瞬间：一次性折叠完
+      for (const ev of queueRef.current) {
+        if (viewRef.current) applyEventToView(viewRef.current, ev);
+      }
+      const allLines = queueRef.current.flatMap(eventToLines);
+      queueRef.current = [];
+      if (viewRef.current) setView(cloneView(viewRef.current));
+      if (allLines.length) setLog((prev) => [...prev, ...allLines]);
+      setPlaying(false);
+      return;
+    }
+    const tick = () => {
+      const ev = queueRef.current.shift();
+      if (!ev) {
+        setPlaying(false);
+        return;
+      }
+      foldOne(ev);
+      tickTimer.current = setTimeout(tick, SPEED_MS[speedRef.current]);
+    };
+    tick();
+  }, [foldOne]);
+
+  /** 把一批事件入队并（若未在播）启动回放。 */
+  const enqueue = useCallback(
+    (events: BattleEvent[]) => {
+      if (!events.length) return;
+      queueRef.current.push(...events);
+      setPlaying(true);
+      if (!tickTimer.current) drain();
+    },
+    [drain],
+  );
+
   const start = useCallback(
     (teamA: Combatant[], teamB: Combatant[], seed: number) => {
-      if (aiTimer.current) clearTimeout(aiTimer.current);
+      clearTimers();
+      queueRef.current = [];
       seedRef.current = seed;
       setPending(null);
       const { state: s0, events } = createBattle(teamA, teamB, seed);
+      logicRef.current = s0;
+      viewRef.current = cloneView(s0);
       setLog([]);
-      appendEvents(events);
-      setState(s0);
+      setView(cloneView(s0));
+      setPlaying(false);
+      enqueue(events);
     },
-    [appendEvents],
+    [clearTimers, enqueue],
   );
 
-  const step = useCallback(
-    (cur: BattleState, action: Action): BattleState => {
-      const { state: ns, events } = applyAction(cur, action);
-      appendEvents(events);
-      return ns;
-    },
-    [appendEvents],
-  );
-
+  /** 执行一个动作：推进逻辑态，把产生的事件入队回放。 */
   const runAction = useCallback(
     (action: Action) => {
       setPending(null);
-      setState((cur) => {
-        if (!cur || isOver(cur) || currentFighter(cur)?.team !== 'a') return cur;
-        return step(cur, action);
-      });
+      const cur = logicRef.current;
+      if (!cur || isOver(cur) || currentFighter(cur)?.team !== 'a') return;
+      const { state: ns, events } = applyAction(cur, action);
+      logicRef.current = ns;
+      enqueue(events);
     },
-    [step],
+    [enqueue],
   );
 
-  /** 选动作：单体技能/普攻需选目标 → 进 pending；其余直接执行。 */
   const choose = useCallback(
     (action: Action) => {
-      if (!state) return;
-      const actor = currentFighter(state);
+      const s = logicRef.current;
+      if (!s) return;
+      const actor = currentFighter(s);
       if (!actor) return;
       const tt: TargetType = action.kind === 'attack' ? 'one_enemy' : skillDef(action.skill).targetType;
       const needPick = tt === 'one_enemy' || tt === 'one_ally';
@@ -111,9 +183,9 @@ export function useBattle(): UseBattle {
         runAction(action);
         return;
       }
-      const candidates = legalTargets(state, actor, tt);
+      const candidates = legalTargets(s, actor, tt);
       if (candidates.length <= 1) {
-        runAction(action); // 只有一个目标，无需选
+        runAction(action);
         return;
       }
       setPending({
@@ -123,7 +195,7 @@ export function useBattle(): UseBattle {
         candidates,
       });
     },
-    [state, runAction],
+    [runAction],
   );
 
   const chooseTarget = useCallback(
@@ -132,7 +204,7 @@ export function useBattle(): UseBattle {
       const action: Action =
         pending.kind === 'attack'
           ? { kind: 'attack', target }
-          : { kind: 'skill', skill: pending.skill as any, targets: [target] };
+          : { kind: 'skill', skill: pending.skill as Extract<Action, { kind: 'skill' }>['skill'], targets: [target] };
       runAction(action);
     },
     [pending, runAction],
@@ -140,37 +212,58 @@ export function useBattle(): UseBattle {
 
   const cancelPending = useCallback(() => setPending(null), []);
 
-  // 自动推进：轮到 AI（b），或玩家开了"自动"且轮到 a
+  // 自动推进：回放清空（!playing）后，若轮到 AI（b）或开了自动且轮到 a，则推进一步。
   useEffect(() => {
-    if (!state || isOver(state)) return;
-    const cur = currentFighter(state);
+    if (playing) return; // 回放中不推进
+    const s = logicRef.current;
+    if (!s || isOver(s)) return;
+    const cur = currentFighter(s);
     if (!cur) return;
     const aiDriven = cur.team === 'b' || (auto && cur.team === 'a');
     if (!aiDriven) return;
     aiTimer.current = setTimeout(() => {
-      setState((s) => {
-        if (!s || isOver(s)) return s;
-        const c = currentFighter(s);
-        if (!c) return s;
-        if (!(c.team === 'b' || (auto && c.team === 'a'))) return s;
-        const aiSeed = (seedRef.current * 2654435761 + s.round * 40503 + s.turnIndex) >>> 0;
-        return step(s, chooseAction(s, aiSeed));
-      });
-    }, AI_DELAY_MS);
+      const cs = logicRef.current;
+      if (!cs || isOver(cs)) return;
+      const c = currentFighter(cs);
+      if (!c || !(c.team === 'b' || (auto && c.team === 'a'))) return;
+      const aiSeed = (seedRef.current * 2654435761 + cs.round * 40503 + cs.turnIndex) >>> 0;
+      const { state: ns, events } = applyAction(cs, chooseAction(cs, aiSeed));
+      logicRef.current = ns;
+      enqueue(events);
+    }, AI_GAP_MS);
     return () => void (aiTimer.current && clearTimeout(aiTimer.current));
-  }, [state, auto, step]);
+  }, [playing, auto, view, enqueue]);
 
-  useEffect(() => () => void (aiTimer.current && clearTimeout(aiTimer.current)), []);
+  useEffect(() => () => clearTimers(), [clearTimers]);
 
-  const finished = state ? isOver(state) : false;
-  const cur = state ? currentFighter(state) : undefined;
-  const myTurn = !!state && !finished && cur?.team === 'a' && !auto;
-  const actions = state && !finished && cur?.team === 'a' ? allActions(state, { team: 'a', id: cur.id }) : [];
-  const myEnergy = cur?.team === 'a' ? cur.energy : (state?.teams.a.find((f) => !f.dead)?.energy ?? 0);
-  const winner = (state?.winner ?? null) as 'a' | 'b' | null;
+  // 派生 UI 状态：基于逻辑态 + 是否回放中。
+  const logic = logicRef.current;
+  // 胜负横幅等回放播完再显示（别在死亡动画播放时就剧透结果）。
+  const finished = logic ? isOver(logic) && !playing : false;
+  const cur = logic ? currentFighter(logic) : undefined;
+  const idle = !playing && !pending;
+  const myTurn = !!logic && !finished && cur?.team === 'a' && !auto && idle;
+  const actions = logic && !finished && cur?.team === 'a' && idle ? allActions(logic, { team: 'a', id: cur.id }) : [];
+  const myEnergy = cur?.team === 'a' ? cur.energy : (logic?.teams.a.find((f) => !f.dead)?.energy ?? 0);
+  const winner = (logic?.winner ?? null) as 'a' | 'b' | null;
 
   return {
-    state, log, myTurn, actions, myEnergy, finished, winner, auto, pending,
-    start, choose, chooseTarget, cancelPending, setAuto,
+    state: view,
+    log,
+    myTurn,
+    actions,
+    myEnergy,
+    finished,
+    winner,
+    auto,
+    pending,
+    playing,
+    speed,
+    start,
+    choose,
+    chooseTarget,
+    cancelPending,
+    setAuto,
+    setSpeed,
   };
 }

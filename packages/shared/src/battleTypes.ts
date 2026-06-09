@@ -53,6 +53,19 @@ export interface FighterRT {
   charged: boolean;
   /** 战吼增益：剩余回合内攻击命中 +2。 */
   rallyTurns: number;
+  /** 命中惩罚（哈气等 debuff）：剩余回合内自身攻击命中 −hitPenaltyAmt。 */
+  hitPenaltyTurns: number;
+  hitPenaltyAmt: number;
+  /** 控制免疫剩余回合（冰封护盾）：>0 时免疫眩晕/定身/哈气等控制。 */
+  controlImmuneTurns: number;
+  /** 额外回合：>0 时本角色行动后不前进先攻指针、再行动一次（Lirilì 时间静止）。 */
+  extraTurns: number;
+  /**
+   * 被动私有状态袋：各角色被动自己的计数/标志，按 archetype 命名空间存键
+   * （如 'tung.hits' / 'bombombini.gunpowder' / 'trippi.ninthUsed'，bool 存 0/1）。
+   * 用通用袋而非命名字段：被动私有、只被自己读，避免核心类型随内容膨胀。
+   */
+  passiveState: Record<string, number>;
 }
 
 /** 玩家/AI 的一个动作。技能可带多个目标（AOE/全体）。 */
@@ -137,4 +150,52 @@ export interface AttackMods {
   /** AOE：固定 1d6、不加 STR 伤害调整（范围技能较轻）。 */
   aoe?: boolean;
   extraHitBonus?: number;
+  /** 本次攻击来自一个耗能技能（cost>0），供被动区分普攻/戏法 vs 法术（如 Bombombini 引信）。 */
+  fromSpell?: boolean;
+}
+
+/**
+ * 被动 handler 的执行上下文。
+ * 比 EffectCtx 多给整局 state（团队构成可见），但不给 attack/heal 门面：
+ * 被动造成的额外伤害走扁平助手、绝不回调攻击管线（避免递归 / 重复抽 RNG）。
+ */
+export interface PassiveCtx {
+  self: FighterRT;
+  state: BattleState;
+  rng: import('./rng.js').Rng;
+  emit: (e: BattleEvent) => void;
+}
+
+/**
+ * 角色被动 —— 仿 effects.ts 插件模式，每个 archetype 一个，只实现需要的钩子。
+ * 事件钩子可变 + emit；三个 modify* 是读时纯函数（无副作用、不存储），
+ * 保证随团队构成变化即时生效（如 CA 随 BC 存活/死亡乘区翻转）。
+ */
+export interface Passive {
+  /** 本角色回合开始（已过临时态衰减、未行动前；倒地/昏迷时不触发）。 */
+  onTurnStart?(ctx: PassiveCtx): void;
+  /** 本角色单体命中造成伤害后（raw=实际扣血，AOE 不触发；fromSpell=本次来自耗能技能）。 */
+  onDealDamage?(ctx: PassiveCtx, target: FighterRT, raw: number, crit: boolean, fromSpell: boolean): void;
+  /** 本角色被命中后。 */
+  onTakeHit?(ctx: PassiveCtx, attacker: FighterRT, raw: number, crit: boolean): void;
+  /** 本角色被攻击但 miss（预留）。 */
+  onMissed?(ctx: PassiveCtx, attacker: FighterRT): void;
+  /** veto：HP≤0 即将倒地。返回 true 表示已自行把 hp 拉到 ≥1，阻止倒地（一次性须自守标志）。 */
+  onWouldGoDown?(ctx: PassiveCtx): boolean;
+  /** 某友方（非自己）刚结算了一个 support 技能。 */
+  onAllySupport?(ctx: PassiveCtx, ally: FighterRT, skill: SkillId): void;
+  /** 本角色释放了一个耗能技能（cost>0）后（Bombombini 引爆火药、释放后清层）。 */
+  onCastSpell?(ctx: PassiveCtx, skill: SkillId): void;
+  /** 读时纯函数：派生属性乘区（toHit/dmgBonus/ac），不作用于先攻。 */
+  modifyStats?(base: DerivedStats, ctx: PassiveCtx): DerivedStats;
+  /** 读时纯函数：出伤乘区（石化减伤前应用）。 */
+  modifyOutgoingDamage?(ctx: PassiveCtx, target: FighterRT, raw: number): number;
+  /** 读时纯函数：受伤减免（常驻护甲，如 Bombardiro 装甲蒙皮；石化减伤之外再减）。 */
+  modifyIncomingDamage?(ctx: PassiveCtx, attacker: FighterRT, raw: number): number;
+  /** 读时纯函数：受到的治疗/增益增幅（source=施加者，可空）。 */
+  modifyIncomingHeal?(ctx: PassiveCtx, source: FighterRT | undefined, amount: number): number;
+  /** 开局先攻加值（Tralalero 三足疾行：抢先手）。仅在 createBattle 掷先攻时叠加。 */
+  initiativeBonus?: number;
+  /** 标志：每回合首次普攻必命中（Tralalero 三足疾行）。引擎用 passiveState 跟踪本回合是否已普攻。 */
+  firstBasicAutoHit?: boolean;
 }

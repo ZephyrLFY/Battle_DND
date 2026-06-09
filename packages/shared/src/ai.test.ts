@@ -19,31 +19,31 @@ function firstTurn(a: Combatant[], b: Combatant[], team: 'a' | 'b'): BattleState
 
 describe('贪心 AI', () => {
   it('确定性：相同 state+seed 恒等', () => {
-    const st = firstTurn([mk('Onix', 8, ['brave_strike'])], [mk('Pikachu', 8)], 'a');
+    const st = firstTurn([mk('TrippiTroppi', 8, ['brave_strike'])], [mk('ChimpanziniBananini', 8)], 'a');
     st.teams.a[0]!.energy = 5;
     expect(chooseActionGreedy(st, 7)).toEqual(chooseActionGreedy(st, 7));
   });
 
   it('能秒杀残血敌人时优先攻击它', () => {
     // a 一个高攻角色，b 两个敌人，其中一个被压到残血
-    const st = firstTurn([mk('Hitmonlee', 12)], [mk('Onix', 8), mk('Pikachu', 8)], 'a');
-    const lowEnemy = find(st, { team: 'b', id: 'Pikachu' })!;
+    const st = firstTurn([mk('TungSahur', 12)], [mk('TrippiTroppi', 8), mk('ChimpanziniBananini', 8)], 'a');
+    const lowEnemy = find(st, { team: 'b', id: 'ChimpanziniBananini' })!;
     lowEnemy.hp = 2; // 残血
     const action = chooseActionGreedy(st, 1);
     expect(action.kind).toBe('attack');
-    if (action.kind === 'attack') expect(action.target.id).toBe('Pikachu'); // 选残血的
+    if (action.kind === 'attack') expect(action.target.id).toBe('ChimpanziniBananini'); // 选残血的
   });
 
   it('有倒地队友且会复活术时优先复活', () => {
     const st = firstTurn(
-      [mk('Licktung', 12, ['revive']), mk('Onix', 8)],
-      [mk('Pikachu', 1)],
+      [mk('BrrBrrPatapim', 12, ['revive']), mk('TrippiTroppi', 8)],
+      [mk('ChimpanziniBananini', 1)],
       'a',
     );
-    // 确保行动者是带 revive 的 Licktung
-    if (currentFighter(st)?.id !== 'Licktung') return; // 偶发非它先手则跳过
+    // 确保行动者是带 revive 的 Brr Brr Patapim
+    if (currentFighter(st)?.id !== 'BrrBrrPatapim') return; // 偶发非它先手则跳过
     st.teams.a[0]!.energy = 9;
-    const ally = find(st, { team: 'a', id: 'Onix' })!;
+    const ally = find(st, { team: 'a', id: 'TrippiTroppi' })!;
     ally.downed = true;
     ally.hp = 0;
     const action = chooseActionGreedy(st, 1);
@@ -53,8 +53,8 @@ describe('贪心 AI', () => {
   it('贪心 AI 整体强于随机 AI（攻击向 build 胜率 > 60%）', () => {
     // 用攻击向 build 验证 AI 基本能力（集火/选目标）；
     // 含护盾/治疗的消耗向 build 的平衡留给 sim 工具系统分析，不在单测里压阈值。
-    const teamA = [mk('Hitmonlee', 10, ['brave_strike']), mk('Charmander', 10, ['brave_strike']), mk('Squirtle', 10, ['flurry'])];
-    const teamB = [mk('Geodude', 10, ['brave_strike']), mk('Krabby', 10, ['brave_strike']), mk('Onix', 10, ['flurry'])];
+    const teamA = [mk('TungSahur', 10, ['brave_strike']), mk('CappuccinoAssassino', 10, ['brave_strike']), mk('BombardiroCrocodilo', 10, ['flurry'])];
+    const teamB = [mk('BonecaAmbalabu', 10, ['brave_strike']), mk('BombombiniGusini', 10, ['brave_strike']), mk('TrippiTroppi', 10, ['flurry'])];
     let greedyWins = 0;
     const N = 60;
     for (let i = 0; i < N; i++) {
@@ -73,7 +73,7 @@ describe('贪心 AI', () => {
   });
 
   it('chooseAction 默认走贪心', () => {
-    const st = firstTurn([mk('Onix', 8, ['brave_strike'])], [mk('Pikachu', 8)], 'a');
+    const st = firstTurn([mk('TrippiTroppi', 8, ['brave_strike'])], [mk('ChimpanziniBananini', 8)], 'a');
     st.teams.a[0]!.energy = 5;
     expect(chooseAction(st, 3)).toEqual(chooseActionGreedy(st, 3));
   });

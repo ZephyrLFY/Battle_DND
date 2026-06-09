@@ -77,5 +77,5 @@ export function TeamEditor({
 
 /** 造一支默认的 3 人不重复队伍。 */
 export function defaultTeam(): Combatant[] {
-  return [newCombatant('Charmander'), newCombatant('Onix'), newCombatant('Pikachu')];
+  return [newCombatant('CappuccinoAssassino'), newCombatant('TrippiTroppi'), newCombatant('TralaleroTralala')];
 }
