@@ -13,9 +13,11 @@
     "build": "npm run build --workspaces --if-present",
     "dev:client": "npm run dev --workspace packages/client",
     "dev:server": "npm run dev --workspace packages/server",
-    "sim": "tsx packages/shared/src/sim.cli.ts"
+    "sim": "tsx packages/shared/src/sim.cli.ts",
+    "art": "node art/process.mjs"
   },
   "devDependencies": {
+    "sharp": "^0.34.5",
     "tsx": "^4.22.4"
   }
 }
