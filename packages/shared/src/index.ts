@@ -4,6 +4,7 @@ export * from './roster.js';
 export * from './combatant.js';
 export * from './skills.js';
 export * from './effects.js';
+export * from './passives.js';
 export * from './battle.js';
 export * from './leveling.js';
 export * from './team.js';

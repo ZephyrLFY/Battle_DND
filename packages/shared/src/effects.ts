@@ -8,6 +8,7 @@
  * handler 不重复实现。
  */
 import { roll } from './dice.js';
+import { isControlImmune } from './passives.js';
 import type { SkillId } from './skills.js';
 import type { EffectCtx, FighterRT } from './battleTypes.js';
 
@@ -42,7 +43,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     const t = first(ctx);
     if (!t) return;
     ctx.attack(t);
-    if (t.hp > 0 && !t.downed && !t.dead) {
+    if (t.hp > 0 && !t.downed && !t.dead && !isControlImmune(t)) {
       // 体质豁免：对方 1d20+CON_mod ≥ 13 抵抗
       const save = roll(ctx.rng, '1d20', t.stats.conMod);
       if (save.total < 13) {
@@ -95,6 +96,131 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       if (!t.dead) t.rallyTurns = 2; // 2 因本方回合开始会先衰减 1
     }
     ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '战吼！全体友方下回合命中 +2' });
+  },
+
+  // —— 角色签名技能 ——
+  // 🥖 Tung：连敲 3 次，命中递减（0/−2/−4）。配合「不眠的梆子」被动逐击叠层。
+  sig_tung_combo: (ctx) => {
+    const t = first(ctx);
+    if (!t) return;
+    for (let i = 0; i < 3; i++) {
+      if (t.hp <= 0 || t.downed || t.dead) break;
+      ctx.attack(t, { extraHitBonus: -2 * i });
+    }
+  },
+  // 🦢💣 Bombombini：自爆冲锋。4d6 单体（fromSpell→「引信」加成生效），自身受当前 HP 1/4 反噬。
+  sig_bombombini_blast: (ctx) => {
+    const t = first(ctx);
+    if (!t) return;
+    ctx.attack(t, { charged: true }); // 必中、伤害骰 4d6（复用蓄力档）
+    const recoil = Math.floor(ctx.actor.hp / 4);
+    if (recoil > 0) {
+      ctx.actor.hp = Math.max(0, ctx.actor.hp - recoil);
+      ctx.emit({ t: 'damage', to: ref(ctx.actor), roll: { spec: '反噬', rolls: [recoil], bonus: 0, total: recoil }, mitigated: 0, dealt: recoil, hpLeft: ctx.actor.hp });
+    }
+  },
+  // 🐸 Trippi：哈气。令一个敌人下回合命中 −4（纯控，不造成伤害）。
+  sig_trippi_hiss: (ctx) => {
+    const t = first(ctx);
+    if (!t || t.dead || t.downed) return;
+    if (isControlImmune(t)) {
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 免疫了哈气` });
+      return;
+    }
+    t.hitPenaltyTurns = 2; // 2 因目标自己回合开始会先衰减 1 → 实际覆盖其下一回合
+    t.hitPenaltyAmt = 4;
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `哈气！${t.name} 下回合命中 −4` });
+  },
+  // 🌵🐘 Lirilì：时间静止。本回合用于发动，随后连续行动 2 次（净 +1 行动，对应「下回合行动2次」）。
+  sig_lirili_timestop: (ctx) => {
+    ctx.actor.extraTurns += 2;
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '时间静止！连续行动 2 次' });
+  },
+  // ☕ Cappuccino：斩首一击。必中；目标 HP<25% 时伤害骰翻倍（处决）。
+  sig_cappuccino_behead: (ctx) => {
+    const t = first(ctx);
+    if (!t || t.dead || t.downed) return;
+    const execute = t.hp < t.stats.maxHp * 0.25;
+    // 复用蓄力(必中, 4d6)做处决档；非处决用英勇(命中+2, 3d6)。
+    ctx.attack(t, execute ? { charged: true } : { brave: true });
+  },
+  // 🩰☕ Ballerina：华尔兹号令。全体友方下回合命中 +2 且 AC +1。
+  sig_ballerina_waltz: (ctx) => {
+    for (const t of ctx.targets) {
+      if (t.dead) continue;
+      t.rallyTurns = 2; // 2 因本方回合开始先衰减 1
+      t.acBonus += 1;
+    }
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '华尔兹号令！全体友方命中 +2、AC +1' });
+  },
+  // 🐊 Bombardiro：地毯式轰炸。AOE 2d6；每目标体质豁免失败则震慑。
+  sig_bombardiro_carpet: (ctx) => {
+    for (const t of ctx.targets) {
+      if (t.dead || t.downed) continue;
+      ctx.attack(t, { aoe: true });
+      if (t.hp > 0 && !t.downed && !t.dead && !isControlImmune(t)) {
+        const save = roll(ctx.rng, '1d20', t.stats.conMod);
+        if (save.total < 13) {
+          t.stunned = 1;
+          ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被震慑（豁免 ${save.total}<13）` });
+        }
+      }
+    }
+  },
+  // 🌳 Patapim：藤蔓缠绕。命中 + 定身（体质豁免失败则昏迷）。
+  sig_patapim_vines: (ctx) => {
+    const t = first(ctx);
+    if (!t) return;
+    ctx.attack(t);
+    if (t.hp > 0 && !t.downed && !t.dead && !isControlImmune(t)) {
+      const save = roll(ctx.rng, '1d20', t.stats.conMod);
+      if (save.total < 13) {
+        t.stunned = 1;
+        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `藤蔓缠绕！${t.name} 被定身（豁免 ${save.total}<13）` });
+      } else {
+        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 挣脱了藤蔓（豁免 ${save.total}≥13）` });
+      }
+    }
+  },
+  // 🐸🛞 Boneca：轮胎冲撞。必中高伤（蓄力档 4d6），命中后撞退（下回合命中 −3）。
+  sig_boneca_ram: (ctx) => {
+    const t = first(ctx);
+    if (!t || t.dead || t.downed) return;
+    ctx.attack(t, { charged: true });
+    if (t.hp > 0 && !t.downed && !t.dead) {
+      t.hitPenaltyTurns = 2; // 覆盖目标下一回合
+      t.hitPenaltyAmt = Math.max(t.hitPenaltyAmt, 3);
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `撞退！${t.name} 下回合命中 −3` });
+    }
+  },
+  // 🐪🧊 Frigo：冰封护盾。本回合 AC+3，接下来 2 回合免疫控制。
+  sig_frigo_iceshield: (ctx) => {
+    ctx.actor.acBonus += 3;
+    ctx.actor.controlImmuneTurns = 3; // 3 因本方回合开始先衰减 1 → 覆盖本回合 + 之后
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '冰封护盾！AC +3，免疫控制' });
+  },
+  // 🦈👟 Tralalero：疾游连斩。2 次攻击，每次命中后本回合 AC +1。
+  sig_tralalero_dash: (ctx) => {
+    const t = first(ctx);
+    if (!t) return;
+    for (let i = 0; i < 2; i++) {
+      if (t.hp <= 0 || t.downed || t.dead) break;
+      const before = t.hp;
+      ctx.attack(t);
+      if (t.hp < before) ctx.actor.acBonus += 1;
+    }
+  },
+  // 🍌🐒 Chimpanzini：狂猿连击。攻击次数 = 当前能量数（≥1），打完清空能量。
+  sig_chimpanzini_frenzy: (ctx) => {
+    const t = first(ctx);
+    if (!t) return;
+    const hits = Math.max(1, ctx.actor.energy);
+    ctx.actor.energy = 0;
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `狂猿连击！连打 ${hits} 次` });
+    for (let i = 0; i < hits; i++) {
+      if (t.hp <= 0 || t.downed || t.dead) break;
+      ctx.attack(t);
+    }
   },
 };
 

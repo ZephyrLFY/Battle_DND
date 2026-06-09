@@ -95,6 +95,7 @@ packages/
 
 ## 文档
 
+- [`CHARACTERS.md`](CHARACTERS.md) — 角色图鉴：12 个 Italian Brainrot 角色的背景 + 专属技能（被动/签名）
 - [`legacy/README.md`](legacy/README.md) — 8 年前 C++/Qt 原版的说明 + 玩法/数值考古
 - [`TEAM_BATTLE_DESIGN.md`](TEAM_BATTLE_DESIGN.md) — 3v3 队伍战斗系统设计
 - [`DESIGN_REVIEW.md`](DESIGN_REVIEW.md) — 框架审视 + backlog

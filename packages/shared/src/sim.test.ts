@@ -35,15 +35,15 @@ describe('runMatch', () => {
 
 describe('buildCombatant — 加点用满', () => {
   it('力量攻击 build 把点尽量砸进 STR', () => {
-    const c = buildCombatant('Hitmonlee', 10, standardBuilds()[0]!);
+    const c = buildCombatant('TungSahur', 10, standardBuilds()[0]!);
     const ab = abilitiesOf(c);
     expect(ab.str).toBeGreaterThan(ab.dex);
     expect(ab.str).toBeGreaterThan(ab.con);
   });
 
   it('提高上限后专精 build 不再大量浪费点（剩余点应较少）', () => {
-    // MAX_ABILITY=30 后，纯堆 STR 的 Hitmonlee（天赋 STR16）能把点都吃进去
-    const c = buildCombatant('Hitmonlee', 10, standardBuilds()[0]!);
+    // MAX_ABILITY=30 后，纯堆 STR 的 Tung Tung Tung Sahur（天赋 STR16）能把点都吃进去
+    const c = buildCombatant('TungSahur', 10, standardBuilds()[0]!);
     expect(availablePoints(c)).toBeLessThanOrEqual(2);
     expect(spentPoints(c)).toBeGreaterThan(0);
   });

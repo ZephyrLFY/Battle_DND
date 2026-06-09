@@ -21,7 +21,20 @@ export type SkillId =
   | 'heal'
   | 'revive'
   | 'firestorm'
-  | 'war_cry';
+  | 'war_cry'
+  // 角色签名技能（每个 archetype 专属，只有本角色能学，占技能栏）
+  | 'sig_tung_combo'
+  | 'sig_bombombini_blast'
+  | 'sig_trippi_hiss'
+  | 'sig_lirili_timestop'
+  | 'sig_cappuccino_behead'
+  | 'sig_ballerina_waltz'
+  | 'sig_bombardiro_carpet'
+  | 'sig_patapim_vines'
+  | 'sig_boneca_ram'
+  | 'sig_frigo_iceshield'
+  | 'sig_tralalero_dash'
+  | 'sig_chimpanzini_frenzy';
 
 /** 技能在战斗中的行为类别（影响"放技能这一步该怎么走"）。 */
 export type SkillCategory =
@@ -165,6 +178,116 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     cost: 3,
     unlockLevel: 11,
     desc: '拉起一个倒地友方，回复其 1d8 生命（仅对倒地者生效）。',
+  },
+
+  // ── 角色签名技能（专属，占技能栏；只有对应 archetype 能学）──
+  sig_tung_combo: {
+    id: 'sig_tung_combo',
+    name: 'Tung-Tung-Tung 连敲',
+    category: 'multi_attack',
+    targetType: 'one_enemy',
+    cost: 3,
+    unlockLevel: 6,
+    desc: '【Tung 专属】一回合连敲 3 次，每次命中递减 −2（第 1 击 +0、第 2 击 −2、第 3 击 −4）。',
+  },
+  sig_bombombini_blast: {
+    id: 'sig_bombombini_blast',
+    name: '自爆冲锋',
+    category: 'attack',
+    targetType: 'one_enemy',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Bombombini 专属】对单体造成 4d6 伤害，自身受到当前生命 1/4 的反噬。配合「引信」层数威力暴涨。',
+  },
+  sig_trippi_hiss: {
+    id: 'sig_trippi_hiss',
+    name: '哈气',
+    category: 'support',
+    targetType: 'one_enemy',
+    cost: 1,
+    unlockLevel: 3,
+    desc: '【Trippi 专属】猫式威吓：令一个敌人下回合命中 −4。',
+  },
+  sig_lirili_timestop: {
+    id: 'sig_lirili_timestop',
+    name: '时间静止',
+    category: 'support',
+    targetType: 'self',
+    cost: 3,
+    unlockLevel: 6,
+    desc: '【Lirilì 专属】静止时间：本回合不行动，但下个属于自己的回合连续行动 2 次。',
+  },
+  sig_cappuccino_behead: {
+    id: 'sig_cappuccino_behead',
+    name: '斩首一击',
+    category: 'attack',
+    targetType: 'one_enemy',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Cappuccino 专属】必中的处决斩；目标生命低于 25% 时伤害骰翻倍。',
+  },
+  sig_ballerina_waltz: {
+    id: 'sig_ballerina_waltz',
+    name: '华尔兹号令',
+    category: 'support',
+    targetType: 'all_allies',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Ballerina 专属】优雅起舞：全体友方下回合命中 +2 且 AC +1。',
+  },
+  sig_bombardiro_carpet: {
+    id: 'sig_bombardiro_carpet',
+    name: '地毯式轰炸',
+    category: 'aoe',
+    targetType: 'all_enemies',
+    cost: 3,
+    unlockLevel: 8,
+    desc: '【Bombardiro 专属】对全体敌方各 2d6 轰炸；每个目标体质豁免失败则被震慑（昏迷）。',
+  },
+  sig_patapim_vines: {
+    id: 'sig_patapim_vines',
+    name: '藤蔓缠绕',
+    category: 'attack',
+    targetType: 'one_enemy',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Patapim 专属】攻击命中并令目标定身：体质豁免失败则下回合昏迷。',
+  },
+  sig_boneca_ram: {
+    id: 'sig_boneca_ram',
+    name: '轮胎冲撞',
+    category: 'attack',
+    targetType: 'one_enemy',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Boneca 专属】必中的高伤冲撞；命中后撞退目标，使其下回合命中 −3。',
+  },
+  sig_frigo_iceshield: {
+    id: 'sig_frigo_iceshield',
+    name: '冰封护盾',
+    category: 'defense',
+    targetType: 'self',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Frigo 专属】本回合 AC +3，并在接下来 2 回合免疫控制（眩晕/定身/哈气）。',
+  },
+  sig_tralalero_dash: {
+    id: 'sig_tralalero_dash',
+    name: '疾游连斩',
+    category: 'multi_attack',
+    targetType: 'one_enemy',
+    cost: 2,
+    unlockLevel: 6,
+    desc: '【Tralalero 专属】疾游 2 次攻击；每次命中后本回合 AC +1（打得越多越灵活）。',
+  },
+  sig_chimpanzini_frenzy: {
+    id: 'sig_chimpanzini_frenzy',
+    name: '狂猿连击',
+    category: 'multi_attack',
+    targetType: 'one_enemy',
+    cost: 0,
+    unlockLevel: 3,
+    desc: '【Chimpanzini 专属】攻击次数 = 当前能量数（≥1 次）；打完清空全部能量。',
   },
 };
 

@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { SKILLS, ALL_SKILL_IDS, skillDef, isSkillId } from './skills.js';
+import { signatureOwner } from './roster.js';
+
+/** 通用技能池（排除各角色签名技能）—— 分阶断言只针对这部分，签名技能不打乱配比。 */
+const COMMON_SKILL_IDS = ALL_SKILL_IDS.filter((id) => !signatureOwner(id));
 
 describe('技能池静态定义', () => {
-  it('恰好 11 个技能（7 基础 + 4 团队技能）', () => {
-    expect(ALL_SKILL_IDS).toHaveLength(11);
+  it('通用技能恰好 11 个（7 基础 + 4 团队技能）', () => {
+    expect(COMMON_SKILL_IDS).toHaveLength(11);
   });
 
   it('每个技能 id 与 key 一致、字段完整，cost 0~3，unlockLevel≥1', () => {
@@ -17,14 +21,19 @@ describe('技能池静态定义', () => {
     }
   });
 
-  it('分阶：2 戏法(cost0) / 2 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
-    const byCost = (c: number) => ALL_SKILL_IDS.filter((id) => SKILLS[id].cost === c);
+  it('通用技能分阶：2 戏法(cost0) / 2 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
+    const byCost = (c: number) => COMMON_SKILL_IDS.filter((id) => SKILLS[id].cost === c);
     expect(byCost(0)).toHaveLength(2); // 石化/精准
     expect(byCost(1)).toHaveLength(2); // 英勇打击/护盾格挡
     expect(byCost(2)).toHaveLength(5); // 眩晕/疾风/战吼/烈焰/治疗
     expect(byCost(3)).toHaveLength(2); // 蓄力/复活
     // 戏法都是 Lv1 解锁
     for (const id of byCost(0)) expect(SKILLS[id].unlockLevel).toBe(1);
+  });
+
+  it('签名技能：每个都能反查到唯一拥有者 archetype', () => {
+    const sigs = ALL_SKILL_IDS.filter((id) => signatureOwner(id));
+    for (const id of sigs) expect(signatureOwner(id)).toBeTruthy();
   });
 
   it('团队技能存在且目标类型正确', () => {
