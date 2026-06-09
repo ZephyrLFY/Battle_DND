@@ -4,7 +4,7 @@
  * 事件用 FighterRef（team+id）引用角色；我方=a，敌方=b。
  * id 即 archetypeId（队内唯一），直接当显示名。
  */
-import { formatRoll, type BattleEvent, type FighterRef } from '@battle-pokemon/shared';
+import { formatRoll, type BattleEvent, type FighterRef } from '@italian-brainrot/shared';
 
 const teamLabel = (team: 'a' | 'b'): string => (team === 'a' ? '我方' : '敌方');
 const who = (r: FighterRef): string => `${teamLabel(r.team)} ${r.id}`;

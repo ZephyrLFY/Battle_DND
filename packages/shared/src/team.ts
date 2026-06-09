@@ -45,18 +45,19 @@ export function lineupMembers(team: Team): Combatant[] {
 }
 
 /**
- * 随机生成一支敌方队伍（去 UI 层手搓随机）。确定性：同 (level, seed) 恒等。
- * 选 LINEUP_SIZE 个不重复角色，各随机加点 + 随机学若干技能。
+ * 随机生成一支敌方队伍（去 UI 层手搓随机）。确定性：同 (level, seed, size) 恒等。
+ * 选 size 个不重复角色（默认 LINEUP_SIZE，可传我方出战人数实现等量对战），各随机加点 + 随机学技能。
  */
-export function generateEnemyTeam(level: number, seed: number): Combatant[] {
+export function generateEnemyTeam(level: number, seed: number, size: number = LINEUP_SIZE): Combatant[] {
   const rng = new Rng(seed);
   const ids = [...ARCHETYPE_IDS];
-  // 洗牌取前 LINEUP_SIZE 个（不重复）
+  // 洗牌取前 size 个（不重复）；size 夹在 1..角色总数
   for (let i = ids.length - 1; i > 0; i--) {
     const j = rng.int(0, i);
     [ids[i], ids[j]] = [ids[j]!, ids[i]!];
   }
-  const chosen = ids.slice(0, LINEUP_SIZE);
+  const n = Math.max(1, Math.min(size, ids.length));
+  const chosen = ids.slice(0, n);
   return chosen.map((id) => buildRandom(id, level, rng));
 }
 

@@ -1,7 +1,7 @@
-# Battle Pokemon
+# 意大利山海经 · Italian Brainrot
 
 一个 **3v3 D&D 风回合制战术战斗** 游戏，TypeScript 全栈、浏览器里玩。
-当前主题是 **Italian Brainrot**（"意大利脑腐" meme 怪物），见 [`CHARACTERS.md`](CHARACTERS.md)。
+当前主题是 **Italian Brainrot**（"意大利脑腐" meme 怪物，戏称"意大利山海经"），见 [`CHARACTERS.md`](CHARACTERS.md)。
 
 > 这个项目的来历有点特别：它是一个 **8 年前用 C++/Qt 写的大学课程 project** 的现代化重写。
 > 原版是局域网联机的实时自动战斗宝可梦游戏（现归档在 [`legacy/`](legacy/)）。

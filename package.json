@@ -1,8 +1,8 @@
 {
-  "name": "battle-pokemon",
+  "name": "italian-brainrot",
   "version": "0.1.0",
   "private": true,
-  "description": "Web rewrite of an 8-year-old C++/Qt Pokemon battle game",
+  "description": "Italian Brainrot 主题的 3v3 D&D 回合制战斗游戏（8 年前 C++/Qt 课程作业的现代化重写）",
   "workspaces": [
     "packages/shared",
     "packages/server",

@@ -23,7 +23,7 @@ describe('属性点预算', () => {
     expect(totalPoints(15)).toBe(28);
   });
 
-  it('新精灵已花0点、可用点=totalPoints', () => {
+  it('新角色已花0点、可用点=totalPoints', () => {
     const p = { ...newCombatant('TrippiTroppi'), level: 5 };
     expect(spentPoints(p)).toBe(0);
     expect(availablePoints(p)).toBe(totalPoints(5));

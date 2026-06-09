@@ -5,7 +5,7 @@ import {
   type BattleState,
   type FighterRT,
   type FighterRef,
-} from '@battle-pokemon/shared';
+} from '@italian-brainrot/shared';
 import { fighterColor, fighterSprite, shouldFlip } from './presentation.js';
 
 const W = 880;
@@ -79,7 +79,7 @@ export function BattleStage({
     const cur = state.winner === undefined ? currentFighter(state) : undefined;
     const candKeys = new Set((candidates ?? []).map((r) => `${r.team}:${r.id}`));
 
-    drawInitiativeBar(ctx, state, cur);
+    drawInitiativeBar(ctx, state, cur, onSpriteReady);
 
     // 中部布局：每队 3 人竖排，错位（外侧/内侧交替）
     const areaTop = INIT_BAR_H + 40;
@@ -141,11 +141,12 @@ function drawBackground(ctx: CanvasRenderingContext2D) {
   ctx.fillRect(0, 0, W, INIT_BAR_H);
 }
 
-/** 顶部先攻顺序条：按 state.order 画小头像，当前行动者高亮。 */
+/** 顶部先攻顺序条：按 state.order 画角色小图头像（圆形裁切，按队伍朝向翻转），当前行动者高亮。 */
 function drawInitiativeBar(
   ctx: CanvasRenderingContext2D,
   state: BattleState,
   cur: FighterRT | undefined,
+  onSpriteReady: () => void,
 ) {
   const order = state.order;
   ctx.fillStyle = '#8b98ad';
@@ -154,7 +155,7 @@ function drawInitiativeBar(
   ctx.fillText('先攻顺序 ▶', 10, 16);
 
   const startX = 92;
-  const r = 15;
+  const r = 16;
   const step = Math.min(54, (W - startX - 16) / Math.max(1, order.length));
   order.forEach((ref, i) => {
     const f = find(state, ref);
@@ -162,6 +163,9 @@ function drawInitiativeBar(
     const x = startX + step * i + r;
     const y = INIT_BAR_H / 2 + 4;
     const isCur = cur && cur.id === f.id && cur.team === f.team;
+    // 朝向与战场一致：a 队（我方）朝右、b 队（敌方）朝左 → 以朝向区分敌我
+    const want: 'left' | 'right' = f.team === 'a' ? 'right' : 'left';
+    const sprite = getSprite(f.archetypeId, onSpriteReady);
 
     if (isCur) {
       ctx.strokeStyle = '#f0c33c';
@@ -170,21 +174,44 @@ function drawInitiativeBar(
       ctx.arc(x, y, r + 3, 0, Math.PI * 2);
       ctx.stroke();
     }
+
     ctx.globalAlpha = f.downed ? 0.45 : 1;
-    ctx.fillStyle = fighterColor(f);
+    // 圆形底盘
+    ctx.fillStyle = '#0e1320';
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
-    // 队伍色边（我方绿描边、敌方红描边）
+
+    if (sprite) {
+      // 圆形裁切内画 sprite（按队伍朝向翻转）
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.translate(x, y);
+      if (shouldFlip(f.archetypeId, want)) ctx.scale(-1, 1);
+      const s = r * 2;
+      ctx.drawImage(sprite, -r, -r, s, s);
+      ctx.restore();
+    } else {
+      // 回退：主题色 + 首字母
+      ctx.fillStyle = fighterColor(f);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(f.name.slice(0, 2), x, y + 4);
+    }
+
+    // 队伍色边（我方绿、敌方红）
     ctx.strokeStyle = f.team === 'a' ? '#6fe08a' : '#ff8b8b';
     ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
-    // 名字首字母
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(f.name.slice(0, 2), x, y + 4);
   });
 }
 

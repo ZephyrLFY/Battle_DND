@@ -70,7 +70,7 @@ export interface SkillDef {
   desc: string;
 }
 
-/** 技能栏上限：一只精灵最多装备的技能数。 */
+/** 技能栏上限：一个角色最多装备的技能数。 */
 export const MAX_EQUIPPED_SKILLS = 4;
 
 export const SKILLS: Record<SkillId, SkillDef> = {
