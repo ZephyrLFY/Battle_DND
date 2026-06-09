@@ -124,15 +124,15 @@ describe('倒地与胜负（1v1 退化）', () => {
 });
 
 describe('能量系统（普攻攒能、技能耗能）', () => {
-  it('能量从 0 起；普攻命中 +1；戏法(cost0)随时可用', () => {
-    const a = mk('TrippiTroppi', 8, ['brave_strike', 'stone_skin']);
+  it('能量从 0 起；普攻命中 +1；0 能量技能随时可用', () => {
+    const a = mk('TrippiTroppi', 8, ['brave_strike', 'feint']);
     const b = mk('TrippiTroppi', 15);
     let st = firstTurnOf(a, b, 'a');
     expect(st.teams.a[0]!.energy).toBe(0);
-    // 0 能量时 brave(cost1) 不可用，但 stone_skin(cost0 戏法) 可用
+    // 0 能量时 brave(cost1) 不可用，但 feint(cost0) 可用
     let acts = legalActions(st);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(false);
-    expect(acts.some((x) => x.kind === 'skill' && x.skill === 'stone_skin')).toBe(true);
+    expect(acts.some((x) => x.kind === 'skill' && x.skill === 'feint')).toBe(true);
     // 普攻命中才攒能量：反复打直到一次命中，能量应升到 1（其余角色普攻推进回合）
     st = attackUntilHit(st, 'a', 'TrippiTroppi', 'b', 'TrippiTroppi');
     expect(st.teams.a[0]!.energy).toBe(1);

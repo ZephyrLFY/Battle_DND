@@ -20,7 +20,8 @@ npm run dev:client   # 启动游戏 → http://localhost:5173
 
 ```bash
 npm test                 # 跑所有单测（shared 引擎）
-npm run sim 10 200       # 平衡模拟：Lv10、每组合 200 场，打印各 build 胜率表
+npm run sim 10 200       # 平衡模拟：属性向 build 循环赛胜率表
+npm run sim:balance 10 200  # 角色平衡：12 角色 1v1 + 3v3 胜率（只带签名+被动）
 npm run art              # 美术资产管线：把 art/raw/ 的角色图统一成战场 sprite（见 art/README.md）
 npm run build            # 生产构建
 ```
@@ -33,7 +34,7 @@ npm run build            # 生产构建
 
 1. **配队**：选 3 个**不重复**的角色出战。每个角色：
    - 把属性点分配到 **STR 力量 / DEX 敏捷 / CON 体质**（每升一级 +2 点，可洗点）
-   - 从通用技能池 + 自己的**专属签名技能**里学最多 4 个（签名技能只有本角色能学、占技能栏）
+   - **签名技能出生自带**、固定占技能栏第一格（不可卸）；另从通用技能池自选最多 3 个
    - 每个角色还有一个**天生被动**（不占栏），契合其 meme 背景，见 [`CHARACTERS.md`](CHARACTERS.md)
 2. **战斗**：3v3 回合制，全员按**先攻**（1d20 + DEX）排序轮流出手
    - 每回合选：普通攻击 或 一个技能（需选目标的两步选）
@@ -48,7 +49,7 @@ npm run build            # 生产构建
 | **属性** | STR→命中/伤害；DEX→护甲(AC)/先攻；CON→生命/吸血 |
 | **能量** | 从 0 起，普攻**命中** +1，放技能消耗（cost 0~3）。逼你"想放大招得先普攻" |
 | **倒地** | HP≤0 倒地（不能行动、**不可被补刀**），队友可用复活术救回；倒地超 3 回合未救 → 彻底死亡 |
-| **技能** | 戏法（免费）/ 法术（耗能量）；攻击/防御/AOE/治疗/复活/增益 + 各角色专属签名技能 |
+| **技能** | 按 cost 0~3 耗能；攻击/防御/AOE/治疗/复活/增益 + 各角色出生自带的专属签名技能 |
 | **被动** | 每个角色一个天生被动（不占栏）：常驻减伤/反伤/续航、受击叠层、暴击追击、联动、额外回合等 |
 
 数值常量：满级 15、属性上限 30、出战 3 人、技能栏 4 格。
@@ -95,14 +96,16 @@ packages/
 
 ## 测试与平衡
 
-- **单测**：`npm test`，覆盖战斗引擎、属性派生、技能、养成、AI、模拟工具。
-- **平衡模拟**：`npm run sim [等级] [场数]` 让标准 build（力量/敏捷/坦克/均衡）循环赛，输出胜率矩阵。改完数值立刻能看效果。
+- **单测**：`npm test`，覆盖战斗引擎、属性派生、技能、被动、养成、AI、模拟工具。
+- **平衡模拟**：`npm run sim` 跑属性向 build 循环赛；`npm run sim:balance` 跑 12 角色
+  1v1（隔离单体）+ 3v3（团队贡献，基准队替换位）胜率。调参依据见 [`BALANCE_REPORT.md`](BALANCE_REPORT.md)。
 
 ---
 
 ## 文档
 
 - [`CHARACTERS.md`](CHARACTERS.md) — 角色图鉴：12 个 Italian Brainrot 角色的背景 + 专属技能（被动/签名）
+- [`BALANCE_REPORT.md`](BALANCE_REPORT.md) — 平衡性报告：sim 胜率数据 + 已实施的调参补丁
 - [`ART_PLAN.md`](ART_PLAN.md) — 美术方案：事件回放 + 状态动画 + 资产管线路线
 - [`art/README.md`](art/README.md) — 美术资产管线用法（原图 → 战场 sprite）
 - [`legacy/README.md`](legacy/README.md) — 8 年前 C++/Qt 原版的说明 + 玩法/数值考古
@@ -115,6 +118,7 @@ packages/
 可视骰子 + **事件逐帧回放**、平衡工具；Italian Brainrot 换皮 + 角色 sprite（带朝向）。
 
 未做（backlog）：
-- **数值平衡**：被动/签名尚未专门调校（后续用 `npm run sim` 数据驱动微调）。
+- **数值平衡**：已做一轮 sim 驱动调参（见 [`BALANCE_REPORT.md`](BALANCE_REPORT.md)），头尾仍在迭代；
+  CA↔BC 联动需加专门 sim 才能评判。
 - **状态动画**：受击抖动/攻击突进/跳字等（[`ART_PLAN.md`](ART_PLAN.md) Step B）。
 - 外层游戏循环（角色获取/解锁）、联机 PvP（`packages/server` 待建）、登录存档。

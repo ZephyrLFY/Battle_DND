@@ -81,8 +81,8 @@ describe('技能学习', () => {
   });
 
   it('Lv1 技能可学；学后从可学列表移除', () => {
-    const p = learnSkill(newCombatant('TrippiTroppi'), 'stone_skin'); // cost0 Lv1
-    expect(p.skills).toContain('stone_skin');
+    const p = learnSkill(newCombatant('TrippiTroppi'), 'feint'); // cost0 Lv1
+    expect(p.skills).toContain('feint');
     expect(learnableSkills(p)).toHaveLength(10);
   });
 
@@ -103,7 +103,7 @@ describe('技能学习', () => {
     // TrippiTroppi 出生自带签名占 1 格，再学 3 个即满。
     let p = { ...newCombatant('TrippiTroppi'), level: 8 };
     p = learnSkill(p, 'shield_block');
-    p = learnSkill(p, 'stone_skin');
+    p = learnSkill(p, 'feint');
     p = learnSkill(p, 'precise_aim');
     expect(p.skills).toHaveLength(4);
     expect(skillBarFull(p)).toBe(true);
@@ -115,7 +115,7 @@ describe('技能学习', () => {
   it('卸下（非签名）技能后腾出栏位可再学', () => {
     let p = { ...newCombatant('TrippiTroppi'), level: 8 };
     p = learnSkill(p, 'shield_block');
-    p = learnSkill(p, 'stone_skin');
+    p = learnSkill(p, 'feint');
     p = learnSkill(p, 'precise_aim'); // 满（含签名 4 个）
     p = forgetSkill(p, 'precise_aim');
     expect(p.skills).not.toContain('precise_aim');
@@ -130,8 +130,8 @@ describe('技能学习', () => {
   });
 
   it('重复学 / 未知技能抛错', () => {
-    const p = learnSkill(newCombatant('TrippiTroppi'), 'stone_skin');
-    expect(() => learnSkill(p, 'stone_skin')).toThrow();
+    const p = learnSkill(newCombatant('TrippiTroppi'), 'feint');
+    expect(() => learnSkill(p, 'feint')).toThrow();
     expect(() => learnSkill(p, 'nope')).toThrow();
   });
 });

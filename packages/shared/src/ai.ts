@@ -119,8 +119,24 @@ function evalAction(
       const n = allies.filter((a) => !a.downed).length;
       return { action: { kind: 'skill', skill: 'war_cry', targets: allies.filter((a) => !a.downed).map(ref) }, score: 3 + n * 1.5 };
     }
-    case 'shield_block':
-    case 'stone_skin': {
+    case 'feint': {
+      // 佯攻：小伤 + 破甲。低伤但破甲对后续有价值，给个中低分（高于纯防御、低于强攻）。
+      const target = pickAttackTarget(enemies, self);
+      if (!target) return { action, score: -1 };
+      const s = expectedDamage(self, target, 1) + 1.5; // 1d4 近似 1 骰 + 破甲价值
+      return { action: { kind: 'skill', skill: 'feint', targets: [ref(target)] }, score: s };
+    }
+    case 'sig_chimpanzini_frenzy': {
+      // 狂猿连击：攻击次数 = 当前能量，打完清空。低能量时放=浪费 → 给负分；
+      // 攒到 ≥3 才值得引爆，按"能量数 = 攻击次数"估期望伤害。
+      const target = pickAttackTarget(enemies, self);
+      if (!target) return { action, score: -1 };
+      if (self.energy < 3) return { action, score: -1 }; // 攒着别放
+      const hits = Math.max(1, self.energy);
+      const s = expectedDamage(self, target, hits) + killBonus(target, self, hits);
+      return { action: { kind: 'skill', skill: 'sig_chimpanzini_frenzy', targets: [ref(target)] }, score: s };
+    }
+    case 'shield_block': {
       // 纯防御姿态在回合制里几乎总是亏（少打一次输出）。贪心 AI 基本不主动龟缩，
       // 只给极低的保底分——仅当没有任何能攻击的目标时才会被动选到。
       void hpRatio;

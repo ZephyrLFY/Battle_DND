@@ -72,6 +72,9 @@ function teammateDead(ctx: PassiveCtx, team: 'a' | 'b', archetypeId: string): bo
 // 被动注册表
 // ─────────────────────────────────────────────────────────────────────────
 
+/** Tung 叠击层数上限。 */
+const TUNG_STACK_CAP = 5;
+
 export const PASSIVES: Record<string, Passive> = {
   // 🥖 Tung Tung Tung Sahur ——「不眠的梆子」
   // 普攻/技能命中造成伤害时，先按已叠层数追加等量扁平伤害，再叠 1 层；
@@ -83,7 +86,8 @@ export const PASSIVES: Record<string, Passive> = {
         dealFlatDamage(ctx, target, stacks, '敲击');
         ctx.emit({ t: 'buff', who: ref(ctx.self), note: `敲击 ${stacks} 层追加伤害` });
       }
-      bumpStack(ctx.self, 'tung.hits', 1);
+      // 叠击上限 5：封住中后期"一棒十几点"的滚雪球天花板。
+      if (stacks < TUNG_STACK_CAP) bumpStack(ctx.self, 'tung.hits', 1);
     },
     onTurnStart: (ctx) => {
       // 上一整回合没出手 → 清空敲击层数。__acted 由引擎在行动后置 1、回合开始读后清 0。
@@ -102,7 +106,7 @@ export const PASSIVES: Record<string, Passive> = {
       bumpStack(ctx.self, 'bombombini.gunpowder', 1);
     },
     onDealDamage: (ctx, target, _raw, _crit, fromSpell) => {
-      if (!fromSpell) return; // 普攻/戏法不吃加成
+      if (!fromSpell) return; // 普攻不吃加成
       const stacks = getStack(ctx.self, 'bombombini.gunpowder');
       if (stacks > 0) {
         dealFlatDamage(ctx, target, stacks * 2, '火药'); // 每层 +2 法术伤害
@@ -126,6 +130,13 @@ export const PASSIVES: Record<string, Passive> = {
       ctx.self.hitPenaltyTurns = 0;
       ctx.self.hitPenaltyAmt = 0;
       ctx.emit({ t: 'buff', who: ref(ctx.self), note: '九命怪猫！以 1 HP 起死回生，清除负面' });
+      // 濒死反扑（炸毛）：固定总伤害由全体存活敌人分摊 → 1v1 全砸一人(爆发足)、3v3 摊薄(不群秒)。
+      const enemyTeam = ctx.self.team === 'a' ? 'b' : 'a';
+      const targets = ctx.state.teams[enemyTeam].filter((e) => !e.dead && !e.downed);
+      if (targets.length > 0) {
+        const each = Math.floor(12 / targets.length);
+        for (const e of targets) dealFlatDamage(ctx, e, each, '炸毛反扑');
+      }
       return true;
     },
   },
@@ -135,7 +146,7 @@ export const PASSIVES: Record<string, Passive> = {
   LiriliLarila: {
     onTakeHit: (ctx, attacker) => {
       if (attacker.dead || attacker.downed) return;
-      dealFlatDamage(ctx, attacker, 2, '尖刺');
+      dealFlatDamage(ctx, attacker, 1, '尖刺');
       ctx.emit({ t: 'buff', who: ref(ctx.self), note: '仙人掌尖刺反弹伤害' });
     },
   },
@@ -209,10 +220,9 @@ export const PASSIVES: Record<string, Passive> = {
     },
   },
 
-  // 🦈👟 Tralalero Tralala ——「三足疾行」：先攻最高 + 每回合首次普攻必命中。
+  // 🦈👟 Tralalero Tralala ——「三足疾行」：先攻加成（仍大概率先手，但不绝对）。
   TralaleroTralala: {
-    initiativeBonus: 50, // 远超 1d20+DEX，等效「先攻视为最高」
-    firstBasicAutoHit: true,
+    initiativeBonus: 5, // +5：抢先手但高 DEX 角色仍有机会
   },
 
   // 🩰☕ Ballerina Cappuccina ——「为舞伴起舞」
@@ -220,16 +230,28 @@ export const PASSIVES: Record<string, Passive> = {
   // （BC 存活与否由 CA 被动读取，无需 BC 侧主动钩子。）
 
   // 🍌🐒 Chimpanzini Bananini ——「香蕉外壳」
-  // HP 首次跌破 50% 时触发一次：立刻 +2 能量 + 本回合减伤（破壳进入战斗形态）。
+  // HP 首次跌破 75%/50%/25% 各破壳一次（共 3 次）：每次 +1 能量 + 本回合减伤。
   ChimpanziniBananini: {
     onTakeHit: (ctx) => {
-      if (getStack(ctx.self, 'chimpanzini.shellBroken') > 0) return;
-      if (ctx.self.hp > 0 && ctx.self.hp < ctx.self.stats.maxHp * 0.5) {
-        setStack(ctx.self, 'chimpanzini.shellBroken', 1);
-        ctx.self.energy = Math.min(ctx.self.stats.maxEnergy, ctx.self.energy + 2);
+      if (ctx.self.dead || ctx.self.downed) return;
+      const ratio = ctx.self.hp / ctx.self.stats.maxHp;
+      const lines = [0.75, 0.5, 0.25];
+      let mask = getStack(ctx.self, 'chimpanzini.shell'); // 位掩码：bit0=75/bit1=50/bit2=25
+      let fired = 0;
+      lines.forEach((line, i) => {
+        const bit = 1 << i;
+        if (!(mask & bit) && ratio <= line) {
+          mask |= bit;
+          fired++;
+        }
+      });
+      if (fired > 0) {
+        setStack(ctx.self, 'chimpanzini.shell', mask);
+        const gain = fired * 3; // 每条线 +3 能量
+        ctx.self.energy = Math.min(ctx.self.stats.maxEnergy, ctx.self.energy + gain);
         ctx.self.stoneTurns = Math.max(ctx.self.stoneTurns, 2);
         ctx.self.stoneAmount = Math.max(ctx.self.stoneAmount, 3);
-        ctx.emit({ t: 'buff', who: ref(ctx.self), note: '破壳！+2 能量，进入战斗形态（减伤）' });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `破壳！+${gain} 能量，进入战斗形态（减伤）` });
       }
     },
   },

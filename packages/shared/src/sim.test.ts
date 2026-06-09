@@ -8,7 +8,7 @@ import {
   signatureCombatant,
   signatureRoster,
   archetypeDuel,
-  archetypeRoundRobin,
+  archetypeTeamContribution,
 } from './sim.js';
 import { abilitiesOf } from './combatant.js';
 import { spentPoints, availablePoints } from './leveling.js';
@@ -90,8 +90,12 @@ describe('角色平衡 sim（纯签名+被动）', () => {
     expect(archetypeDuel(8, 8)).toEqual(rows); // 确定性
   });
 
-  it('archetypeRoundRobin(3v3) 输出 12 行', () => {
-    const rows = archetypeRoundRobin(8, 6);
+  it('archetypeTeamContribution(3v3 替换位) 输出 12 行、胜率合法', () => {
+    const rows = archetypeTeamContribution(8, 6);
     expect(rows).toHaveLength(ARCHETYPE_IDS.length);
+    for (const r of rows) {
+      expect(r.winRate).toBeGreaterThanOrEqual(0);
+      expect(r.winRate).toBeLessThanOrEqual(1);
+    }
   });
 });

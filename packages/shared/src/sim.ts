@@ -206,18 +206,54 @@ export function archetypeDuel(level: number, gamesPer: number): ArchetypeRow[] {
   return archetypeRoundRobinN(level, gamesPer, 1);
 }
 
-/** 3v3 同名队：验证团队联动被动（CA↔BC / Patapim 回声等）。 */
-export function archetypeRoundRobin(level: number, gamesPer: number): ArchetypeRow[] {
-  return archetypeRoundRobinN(level, gamesPer, 3);
+/**
+ * 3v3 团队贡献：固定一支中性基准队，每个角色轮流**替换基准队的一个位置**去打原始基准队，
+ * 看胜率——>50% 说明该角色比被换掉的强（团队里有正贡献），<50% 说明拖后腿。
+ * 这样能测出团队联动（CA↔BC/Patapim），又不像镜像对局那样人人 50%。
+ */
+// 中性基准队：取 1v1 强度处于中段的三个角色（约 50% 一线），让"贡献 >50%"= 强于这条中线。
+const BASELINE_TRIO = ['BombombiniGusini', 'BombardiroCrocodilo', 'FrigoCamelo'];
+
+export interface ContribRow {
+  id: string;
+  /** 把该角色塞进基准队、打原始基准队的胜率（替换位取最低胜率，代表"至少能顶替谁"）。 */
+  winRate: number;
 }
 
-/** 角色循环赛结果 → 按 overall 排序的可读排名表（矩阵太大，只打排名 + overall）。 */
+export function archetypeTeamContribution(level: number, gamesPer: number): ContribRow[] {
+  const sig = (id: string) => signatureCombatant(id, level);
+  const baseline = BASELINE_TRIO.map(sig);
+  const rows: ContribRow[] = [];
+  for (const id of ARCHETYPE_IDS) {
+    const me = sig(id);
+    // 替换基准队每个位置各打一次，取平均胜率（避免站位偏差）。
+    // 若该角色就是基准位本身，替换它等于镜像，仍计入（≈50%）。
+    let sum = 0;
+    for (let slot = 0; slot < baseline.length; slot++) {
+      const team = baseline.map((c, i) => (i === slot ? me : c));
+      sum += runMatch(team, baseline, gamesPer).aWinRate;
+    }
+    rows.push({ id, winRate: round2(sum / baseline.length) });
+  }
+  return rows;
+}
+
+/** ArchetypeRow（1v1）→ 按 overall 排序的可读排名表。 */
 export function formatArchetypeRanking(rows: ArchetypeRow[], title: string): string {
   const sorted = [...rows].sort((a, b) => b.overall - a.overall);
   const lines = sorted.map(
     (r, i) => `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(22)} ${(r.overall * 100).toFixed(0)}%`,
   );
   return [`=== ${title}（overall 胜率排名）===`, ...lines].join('\n');
+}
+
+/** ContribRow（3v3 贡献）→ 排名表。 */
+export function formatContribRanking(rows: ContribRow[], title: string): string {
+  const sorted = [...rows].sort((a, b) => b.winRate - a.winRate);
+  const lines = sorted.map(
+    (r, i) => `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(22)} ${(r.winRate * 100).toFixed(0)}%`,
+  );
+  return [`=== ${title}（替换基准队一位，对原基准队胜率）===`, ...lines].join('\n');
 }
 
 /** 把循环赛结果格式化成可读表格文本。 */

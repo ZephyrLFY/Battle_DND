@@ -11,8 +11,9 @@ import {
   describeBuild,
   signatureCombatant,
   archetypeDuel,
-  archetypeRoundRobin,
+  archetypeTeamContribution,
   formatArchetypeRanking,
+  formatContribRanking,
 } from './sim.js';
 import { ARCHETYPE_IDS } from './roster.js';
 
@@ -29,7 +30,7 @@ if (isBalance) {
     console.log('  ' + describeBuild(signatureCombatant(id, level)));
   }
   console.log('\n' + formatArchetypeRanking(archetypeDuel(level, gamesPer), '1v1 单角色对轰'));
-  console.log('\n' + formatArchetypeRanking(archetypeRoundRobin(level, gamesPer), '3v3 同名队（含团队联动）'));
+  console.log('\n' + formatContribRanking(archetypeTeamContribution(level, gamesPer), '3v3 团队贡献'));
   console.log('');
 } else {
   const specs = standardBuilds();

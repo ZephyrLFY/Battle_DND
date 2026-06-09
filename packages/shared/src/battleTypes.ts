@@ -51,11 +51,14 @@ export interface FighterRT {
   thorns: number;
   /** 蓄力：下次攻击强化（charge_smash）。 */
   charged: boolean;
-  /** 战吼增益：剩余回合内攻击命中 +2。 */
+  /** 战吼增益：剩余回合内攻击命中 +2 且伤害 +2。 */
   rallyTurns: number;
   /** 命中惩罚（哈气等 debuff）：剩余回合内自身攻击命中 −hitPenaltyAmt。 */
   hitPenaltyTurns: number;
   hitPenaltyAmt: number;
+  /** 受击 AC 减益（佯攻破甲）：剩余回合内自身 AC −acDebuffAmt。 */
+  acDebuffTurns: number;
+  acDebuffAmt: number;
   /** 控制免疫剩余回合（冰封护盾）：>0 时免疫眩晕/定身/哈气等控制。 */
   controlImmuneTurns: number;
   /** 额外回合：>0 时本角色行动后不前进先攻指针、再行动一次（Lirilì 时间静止）。 */
@@ -150,8 +153,10 @@ export interface AttackMods {
   /** AOE：固定 1d6、不加 STR 伤害调整（范围技能较轻）。 */
   aoe?: boolean;
   extraHitBonus?: number;
-  /** 本次攻击来自一个耗能技能（cost>0），供被动区分普攻/戏法 vs 法术（如 Bombombini 引信）。 */
+  /** 本次攻击来自一个耗能技能（cost>0），供被动区分普攻 vs 法术（如 Bombombini 引信）。 */
   fromSpell?: boolean;
+  /** 固定伤害骰（佯攻 1d4 等小招）：覆盖默认 1d6，且不加 STR 伤害调整。 */
+  fixedDamage?: string;
 }
 
 /**
@@ -196,6 +201,6 @@ export interface Passive {
   modifyIncomingHeal?(ctx: PassiveCtx, source: FighterRT | undefined, amount: number): number;
   /** 开局先攻加值（Tralalero 三足疾行：抢先手）。仅在 createBattle 掷先攻时叠加。 */
   initiativeBonus?: number;
-  /** 标志：每回合首次普攻必命中（Tralalero 三足疾行）。引擎用 passiveState 跟踪本回合是否已普攻。 */
-  firstBasicAutoHit?: boolean;
+  /** 标志：每回合首次普攻以优势掷命中（Tralalero 三足疾行）。引擎用 passiveState 跟踪本回合是否已普攻。 */
+  firstBasicAdvantage?: boolean;
 }
