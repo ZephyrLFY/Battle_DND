@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newCombatant, abilitiesOf } from './combatant.js';
+import { newCombatant, abilitiesOf, MAX_ABILITY } from './combatant.js';
 import {
   totalPoints,
   spentPoints,
@@ -44,8 +44,10 @@ describe('allocate — 加点', () => {
     expect(() => allocate(p, 'str', 3)).toThrow();
   });
 
-  it('属性不能超过 20', () => {
-    const p = { ...newCombatant('Muk'), level: 15 }; // CON 已 20
+  it('属性不能超过上限 MAX_ABILITY', () => {
+    // Muk 天赋 CON 20；加到上限（30）后再加应抛错
+    let p = { ...newCombatant('Muk'), level: 15 }; // Lv15 → 28 点足够把 CON 顶满
+    while (20 + p.allocations.con < MAX_ABILITY) p = allocate(p, 'con', 1);
     expect(() => allocate(p, 'con', 1)).toThrow();
   });
 
@@ -77,8 +79,8 @@ describe('技能学习', () => {
   });
 
   it('Lv1 戏法可学；学后从可学列表移除', () => {
-    const p = learnSkill(newCombatant('Onix'), 'shield_block'); // 戏法 Lv1
-    expect(p.skills).toContain('shield_block');
+    const p = learnSkill(newCombatant('Onix'), 'stone_skin'); // 戏法 Lv1
+    expect(p.skills).toContain('stone_skin');
     expect(learnableSkills(p)).toHaveLength(10);
   });
 
@@ -119,8 +121,8 @@ describe('技能学习', () => {
   });
 
   it('重复学 / 未知技能抛错', () => {
-    const p = learnSkill(newCombatant('Onix'), 'shield_block');
-    expect(() => learnSkill(p, 'shield_block')).toThrow();
+    const p = learnSkill(newCombatant('Onix'), 'stone_skin');
+    expect(() => learnSkill(p, 'stone_skin')).toThrow();
     expect(() => learnSkill(p, 'nope')).toThrow();
   });
 });

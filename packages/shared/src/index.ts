@@ -8,3 +8,4 @@ export * from './battle.js';
 export * from './leveling.js';
 export * from './team.js';
 export * from './ai.js';
+export * from './sim.js';
