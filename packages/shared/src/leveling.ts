@@ -103,8 +103,14 @@ export function learnSkill(c: Combatant, id: string): Combatant {
   return { ...c, skills: [...c.skills, id as SkillId] };
 }
 
-/** 卸下一个已学技能（技能栏满时可换技能）。 */
+/** 该技能是否为本角色的签名技能（出生自带、占固定槽、不可卸）。 */
+export function isOwnSignature(c: Combatant, id: string): boolean {
+  return signatureOwner(id) === c.archetypeId;
+}
+
+/** 卸下一个已学技能（技能栏满时可换技能）。签名技能不可卸（角色身份）。 */
 export function forgetSkill(c: Combatant, id: string): Combatant {
+  if (isOwnSignature(c, id)) return c; // 签名固定占栏，拒绝卸下
   return { ...c, skills: c.skills.filter((s) => s !== id) };
 }
 

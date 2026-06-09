@@ -142,6 +142,120 @@ export function roundRobin(level: number, specs: BuildSpec[], gamesPer: number):
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+// ─────────────────────────────────────────────────────────────────────────
+// 角色平衡：每个 archetype 只带自己的签名 + 被动（不学通用技能），最干净隔离单体强度
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * 造一个「纯签名」build：自带签名（newCombatant 已放进 skills[0]）+ 被动 + 按天赋主属性撒点，
+ * 不学任何通用技能。用于隔离对比各角色本体强度。
+ */
+export function signatureCombatant(archetypeId: string, level: number): Combatant {
+  let c = { ...newCombatant(archetypeId), level };
+  // 按天赋找主属性，把可用点全砸进去（溢出到次高）
+  const t = abilitiesOf(newCombatant(archetypeId));
+  const order = (['str', 'dex', 'con'] as AbilityKey[]).sort((a, b) => t[b] - t[a]);
+  let guard = 0;
+  while (guard++ < 300 && availablePointsOf(c) > 0) {
+    let added = false;
+    for (const k of order) {
+      try {
+        c = allocate(c, k, 1);
+        added = true;
+        break;
+      } catch {
+        /* 满，下一个 */
+      }
+    }
+    if (!added) break;
+  }
+  return c;
+}
+
+/** 全 12 角色的纯签名 build（用于循环赛）。 */
+export function signatureRoster(level: number): { id: string; combatant: Combatant }[] {
+  return ARCHETYPE_IDS.map((id) => ({ id, combatant: signatureCombatant(id, level) }));
+}
+
+export interface ArchetypeRow {
+  id: string;
+  vs: Record<string, number>;
+  overall: number;
+}
+
+/** 内部：N 人对 N 人的角色循环赛（teamSize=1 → 1v1 单体；=3 → 同名 3 人队）。 */
+function archetypeRoundRobinN(level: number, gamesPer: number, teamSize: number): ArchetypeRow[] {
+  const roster = signatureRoster(level);
+  const mkTeam = (c: Combatant) => Array.from({ length: teamSize }, () => c);
+  const rows: ArchetypeRow[] = [];
+  for (const a of roster) {
+    const vs: Record<string, number> = {};
+    let sum = 0;
+    for (const b of roster) {
+      const r = runMatch(mkTeam(a.combatant), mkTeam(b.combatant), gamesPer);
+      vs[b.id] = round2(r.aWinRate);
+      sum += r.aWinRate;
+    }
+    rows.push({ id: a.id, vs, overall: round2(sum / roster.length) });
+  }
+  return rows;
+}
+
+/** 1v1 单角色对轰：隔离单体强度。 */
+export function archetypeDuel(level: number, gamesPer: number): ArchetypeRow[] {
+  return archetypeRoundRobinN(level, gamesPer, 1);
+}
+
+/**
+ * 3v3 团队贡献：固定一支中性基准队，每个角色轮流**替换基准队的一个位置**去打原始基准队，
+ * 看胜率——>50% 说明该角色比被换掉的强（团队里有正贡献），<50% 说明拖后腿。
+ * 这样能测出团队联动（CA↔BC/Patapim），又不像镜像对局那样人人 50%。
+ */
+// 中性基准队：取 1v1 强度处于中段的三个角色（约 50% 一线），让"贡献 >50%"= 强于这条中线。
+const BASELINE_TRIO = ['BombombiniGusini', 'BombardiroCrocodilo', 'FrigoCamelo'];
+
+export interface ContribRow {
+  id: string;
+  /** 把该角色塞进基准队、打原始基准队的胜率（替换位取最低胜率，代表"至少能顶替谁"）。 */
+  winRate: number;
+}
+
+export function archetypeTeamContribution(level: number, gamesPer: number): ContribRow[] {
+  const sig = (id: string) => signatureCombatant(id, level);
+  const baseline = BASELINE_TRIO.map(sig);
+  const rows: ContribRow[] = [];
+  for (const id of ARCHETYPE_IDS) {
+    const me = sig(id);
+    // 替换基准队每个位置各打一次，取平均胜率（避免站位偏差）。
+    // 若该角色就是基准位本身，替换它等于镜像，仍计入（≈50%）。
+    let sum = 0;
+    for (let slot = 0; slot < baseline.length; slot++) {
+      const team = baseline.map((c, i) => (i === slot ? me : c));
+      sum += runMatch(team, baseline, gamesPer).aWinRate;
+    }
+    rows.push({ id, winRate: round2(sum / baseline.length) });
+  }
+  return rows;
+}
+
+/** ArchetypeRow（1v1）→ 按 overall 排序的可读排名表。 */
+export function formatArchetypeRanking(rows: ArchetypeRow[], title: string): string {
+  const sorted = [...rows].sort((a, b) => b.overall - a.overall);
+  const lines = sorted.map(
+    (r, i) => `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(22)} ${(r.overall * 100).toFixed(0)}%`,
+  );
+  return [`=== ${title}（overall 胜率排名）===`, ...lines].join('\n');
+}
+
+/** ContribRow（3v3 贡献）→ 排名表。 */
+export function formatContribRanking(rows: ContribRow[], title: string): string {
+  const sorted = [...rows].sort((a, b) => b.winRate - a.winRate);
+  const lines = sorted.map(
+    (r, i) => `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(22)} ${(r.winRate * 100).toFixed(0)}%`,
+  );
+  return [`=== ${title}（替换基准队一位，对原基准队胜率）===`, ...lines].join('\n');
+}
+
 /** 把循环赛结果格式化成可读表格文本。 */
 export function formatRoundRobin(rows: RoundRobinRow[]): string {
   const names = rows.map((r) => r.build);

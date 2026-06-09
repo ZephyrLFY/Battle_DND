@@ -93,9 +93,10 @@ describe('deriveStats — 战斗数值派生', () => {
 });
 
 describe('newCombatant / statsOf', () => {
-  it('新角色 1 级、0 经验、属性=天赋、无技能', () => {
+  it('新角色 1 级、0 经验、属性=天赋、自带签名技能', () => {
     const c = newCombatant('TralaleroTralala');
-    expect(c).toMatchObject({ archetypeId: 'TralaleroTralala', level: 1, exp: 0, skills: [] });
+    // 签名技能出生自带，占技能栏第一格
+    expect(c).toMatchObject({ archetypeId: 'TralaleroTralala', level: 1, exp: 0, skills: ['sig_tralalero_dash'] });
     expect(c.allocations).toEqual({ str: 0, dex: 0, con: 0 });
     // 当前属性 = 天赋（未加点）
     expect(abilitiesOf(c)).toEqual(ROSTER['TralaleroTralala']!.talent);

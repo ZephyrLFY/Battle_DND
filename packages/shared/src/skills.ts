@@ -11,7 +11,7 @@
 
 export type SkillId =
   | 'brave_strike'
-  | 'stone_skin'
+  | 'feint'
   | 'stun_strike'
   | 'flurry'
   | 'charge_smash'
@@ -61,11 +61,10 @@ export interface SkillDef {
   /** 作用目标类型。普攻固定 one_enemy（不在此表，单独处理）。 */
   targetType: TargetType;
   /**
-   * 法术位消耗（BG3 风长线资源），分阶 0/1/2/3。
-   * 0 = 戏法，可无限放；1/2/3 = 低/中/高阶法术，越强消耗越多整场不回的法术位。
+   * 能量消耗，分阶 0/1/2/3。0 = 不耗能（随时可放）；1/2/3 = 低/中/高阶，越强耗能越多。
    */
   cost: 0 | 1 | 2 | 3;
-  /** 解锁等级：达到此等级才能学这个技能。戏法均为 1。 */
+  /** 解锁等级：达到此等级才能学这个技能。 */
   unlockLevel: number;
   desc: string;
 }
@@ -74,15 +73,15 @@ export interface SkillDef {
 export const MAX_EQUIPPED_SKILLS = 4;
 
 export const SKILLS: Record<SkillId, SkillDef> = {
-  // ── 戏法（Lv1 解锁，cost 0，无限放）──
-  stone_skin: {
-    id: 'stone_skin',
-    name: '石化表皮',
-    category: 'defense',
-    targetType: 'self',
+  // ── 不耗能技能（Lv1 解锁，cost 0，随时可放）──
+  feint: {
+    id: 'feint',
+    name: '佯攻',
+    category: 'attack',
+    targetType: 'one_enemy',
     cost: 0,
     unlockLevel: 1,
-    desc: '接下来 2 回合受到的伤害减少 1d6（掷一次定减免量）。',
+    desc: '一次小伤害（1d4）并撕开对方防御：目标接下来 1 回合 AC −2（给队友铺路）。',
   },
   precise_aim: {
     id: 'precise_aim',
@@ -91,7 +90,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 0,
     unlockLevel: 1,
-    desc: '本次攻击以优势掷命中（2d20 取高），更易暴击。',
+    desc: '本次攻击以优势掷命中（2d20 取高），更易暴击；但本回合命中不攒能量（不耗能的代价）。',
   },
   // ── 低阶法术（Lv3，cost 1）──
   brave_strike: {
@@ -110,7 +109,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'self',
     cost: 1,
     unlockLevel: 3,
-    desc: '本回合 AC +3，并反弹 1 点伤害给下一次攻击者。',
+    desc: '本回合 AC +3，反弹 1 点伤害给下一次攻击者，并回复 2 点能量（防御转资源）。',
   },
   // ── 中阶法术（Lv6/8，cost 2）──
   stun_strike: {
@@ -159,7 +158,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'all_allies',
     cost: 2,
     unlockLevel: 6,
-    desc: '全体友方接下来 1 回合内攻击命中 +2。',
+    desc: '全体友方接下来 1 回合内攻击命中 +2 且伤害 +2。',
   },
   firestorm: {
     id: 'firestorm',
@@ -258,7 +257,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     name: '轮胎冲撞',
     category: 'attack',
     targetType: 'one_enemy',
-    cost: 2,
+    cost: 3,
     unlockLevel: 6,
     desc: '【Boneca 专属】必中的高伤冲撞；命中后撞退目标，使其下回合命中 −3。',
   },

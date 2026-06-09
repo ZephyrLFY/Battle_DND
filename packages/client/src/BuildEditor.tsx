@@ -20,6 +20,7 @@ import {
   canLearn,
   learnBlockReason,
   signatureOwner,
+  isOwnSignature,
   type Combatant,
   type AbilityKey,
   type SkillId,
@@ -99,12 +100,20 @@ export function BuildEditor({
           {Array.from({ length: MAX_EQUIPPED_SKILLS }).map((_, i) => {
             const id = poke.skills[i];
             if (!id) return <div key={i} className="eq-slot empty">空技能位</div>;
+            const signature = isOwnSignature(poke, id);
             return (
-              <div key={i} className="eq-slot filled">
-                <SkillHeader id={id} />
-                <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
-                  ✕ 卸下
-                </button>
+              <div key={i} className={`eq-slot filled ${signature ? 'signature' : ''}`}>
+                <div className="eq-row">
+                  <SkillHeader id={id} />
+                  {signature ? (
+                    <span className="sig-tag">专属</span>
+                  ) : (
+                    <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
+                      ✕ 卸下
+                    </button>
+                  )}
+                </div>
+                <div className="eq-desc">{SKILLS[id].desc}</div>
               </div>
             );
           })}
@@ -158,7 +167,7 @@ export function BuildEditor({
 }
 
 const COST_LABEL: Record<number, string> = {
-  0: '戏法·免费',
+  0: '0 能量',
   1: '⚡×1',
   2: '⚡×2',
   3: '⚡×3',
@@ -174,7 +183,7 @@ function SkillHeader({ id, prefix = '' }: { id: SkillId; prefix?: string }) {
         {def.name}
         {def.unlockLevel > 1 && <small className="unlock"> Lv{def.unlockLevel}</small>}
       </span>
-      <span className={`cost-badge ${def.cost === 0 ? 'cantrip' : 'spell'}`}>
+      <span className={`cost-badge ${def.cost === 0 ? 'free' : 'spell'}`}>
         {COST_LABEL[def.cost]}
       </span>
     </div>

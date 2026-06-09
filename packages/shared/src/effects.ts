@@ -59,13 +59,23 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   shield_block: (ctx) => {
     ctx.actor.acBonus += 3;
     ctx.actor.thorns = 1;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '本回合 AC+3 并反弹伤害' });
+    // 防御转资源：回 2 点能量（普攻才回 1，放弃这回合输出必须更划算）。
+    const before = ctx.actor.energy;
+    ctx.actor.energy = Math.min(ctx.actor.stats.maxEnergy, ctx.actor.energy + 2);
+    const gained = ctx.actor.energy - before;
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `本回合 AC+3、反弹伤害，回 ${gained} 能量` });
+    if (gained > 0) ctx.emit({ t: 'energy', who: ref(ctx.actor), delta: gained, now: ctx.actor.energy });
   },
-  stone_skin: (ctx) => {
-    const r = roll(ctx.rng, '1d6');
-    ctx.actor.stoneTurns = 2;
-    ctx.actor.stoneAmount = r.total;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `石化：2 回合内减伤 ${r.total}` });
+  // —— 佯攻（cost 0）：小伤 + 破甲，给队友铺路 ——
+  feint: (ctx) => {
+    const t = first(ctx);
+    if (!t || t.dead || t.downed) return;
+    ctx.attack(t, { fixedDamage: '1d4' });
+    if (t.hp > 0 && !t.downed && !t.dead) {
+      t.acDebuffTurns = 2; // 2 因目标自己回合开始先衰减 1 → 覆盖其下一回合
+      t.acDebuffAmt = 2;
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `佯攻破甲！${t.name} 下回合 AC −2` });
+    }
   },
 
   // —— 团队技能（3v3）——
@@ -123,8 +133,11 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   sig_trippi_hiss: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || t.downed) return;
+    // 抓一爪：小伤（1d4），给 Trippi 一点主动输出。
+    ctx.attack(t, { fixedDamage: '1d4' });
+    if (t.hp <= 0 || t.downed || t.dead) return;
     if (isControlImmune(t)) {
-      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 免疫了哈气` });
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 免疫了哈气降命中` });
       return;
     }
     t.hitPenaltyTurns = 2; // 2 因目标自己回合开始会先衰减 1 → 实际覆盖其下一回合
@@ -203,12 +216,15 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   sig_tralalero_dash: (ctx) => {
     const t = first(ctx);
     if (!t) return;
+    let hits = 0;
     for (let i = 0; i < 2; i++) {
       if (t.hp <= 0 || t.downed || t.dead) break;
       const before = t.hp;
       ctx.attack(t);
-      if (t.hp < before) ctx.actor.acBonus += 1;
+      if (t.hp < before) hits++;
     }
+    // 两次都命中才 AC+1（原来每次各+1，自保过强）
+    if (hits >= 2) ctx.actor.acBonus += 1;
   },
   // 🍌🐒 Chimpanzini：狂猿连击。攻击次数 = 当前能量数（≥1），打完清空能量。
   sig_chimpanzini_frenzy: (ctx) => {

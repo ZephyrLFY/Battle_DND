@@ -66,6 +66,8 @@ function mkFighter(team: Side, c: Combatant): FighterRT {
     rallyTurns: 0,
     hitPenaltyTurns: 0,
     hitPenaltyAmt: 0,
+    acDebuffTurns: 0,
+    acDebuffAmt: 0,
     controlImmuneTurns: 0,
     extraTurns: 0,
     passiveState: {},
@@ -276,6 +278,10 @@ export function applyAction(
     actor.hitPenaltyTurns--;
     if (actor.hitPenaltyTurns === 0) actor.hitPenaltyAmt = 0;
   }
+  if (actor.acDebuffTurns > 0) {
+    actor.acDebuffTurns--;
+    if (actor.acDebuffTurns === 0) actor.acDebuffAmt = 0;
+  }
   if (actor.controlImmuneTurns > 0) actor.controlImmuneTurns--;
 
   // 被动 onTurnStart（倒地/昏迷者不触发）。先让被动读上一回合的 __acted，再清零本回合。
@@ -370,7 +376,7 @@ function perform(
   const targets = action.targets
     .map((r) => find(state, r))
     .filter((f): f is FighterRT => !!f);
-  // 耗能技能（cost>0）打出的攻击标记 fromSpell：供被动区分法术 vs 普攻/戏法（Bombombini 引信）。
+  // 耗能技能（cost>0）打出的攻击标记 fromSpell：供被动区分法术 vs 普攻（Bombombini 引信）。
   const fromSpell = def.cost > 0;
   const ctx: EffectCtx = {
     actor,
@@ -436,20 +442,22 @@ function doAttack(
   const rallyBonus = actor.rallyTurns > 0 ? 2 : 0;
   const penalty = actor.hitPenaltyTurns > 0 ? actor.hitPenaltyAmt : 0;
   const hitBonus = actorStats.toHit + (mods.brave ? 2 : 0) + (mods.extraHitBonus ?? 0) + rallyBonus - penalty;
-  const ar = mods.advantage ? attackRollAdvantage(rng, hitBonus, 'adv') : attackRoll(rng, hitBonus);
-
-  // 首击必中（Tralalero 三足疾行）：每回合首次普攻（非法术、非 AOE）保证命中。
-  let firstStrike = false;
-  if (!mods.fromSpell && !mods.aoe && passiveOf(actor.archetypeId)?.firstBasicAutoHit) {
+  // 首击优势（Tralalero 三足疾行）：每回合首次攻击（非法术、非 AOE）以优势掷命中（普攻/多段技能第一下）。
+  let firstAdv = false;
+  if (!mods.fromSpell && !mods.aoe && passiveOf(actor.archetypeId)?.firstBasicAdvantage) {
     if (getStack(actor, BASIC_DONE_KEY) === 0) {
-      firstStrike = true;
+      firstAdv = true;
       setStack(actor, BASIC_DONE_KEY, 1);
     }
   }
 
-  const targetAc = targetStats.ac + target.acBonus;
-  const autoHit = mods.charged || ar.nat20 || firstStrike;
-  const hit = (!ar.nat1 || firstStrike) && (autoHit || ar.total >= targetAc);
+  const ar = mods.advantage || firstAdv ? attackRollAdvantage(rng, hitBonus, 'adv') : attackRoll(rng, hitBonus);
+
+  // 目标 AC = 有效 AC + 自身护盾加成 − 破甲减益（佯攻），下限 1。
+  const acDebuff = target.acDebuffTurns > 0 ? target.acDebuffAmt : 0;
+  const targetAc = Math.max(1, targetStats.ac + target.acBonus - acDebuff);
+  const autoHit = mods.charged || ar.nat20;
+  const hit = !ar.nat1 && (autoHit || ar.total >= targetAc);
   const crit = ar.nat20;
 
   emit({
@@ -468,11 +476,13 @@ function doAttack(
     return false;
   }
 
-  // 法术加强：蓄力 4d6、英勇 3d6、AOE 2d6、普攻 1d6（让消耗能量更值）
-  let dmgSpec = mods.charged ? '4d6' : mods.brave ? '3d6' : mods.aoe ? '2d6' : '1d6';
+  // 伤害骰：固定小招(佯攻 1d4) > 蓄力 4d6 > 英勇 3d6 > AOE 2d6 > 普攻 1d6
+  let dmgSpec = mods.fixedDamage ?? (mods.charged ? '4d6' : mods.brave ? '3d6' : mods.aoe ? '2d6' : '1d6');
   if (crit) dmgSpec = doubleDice(dmgSpec);
-  // AOE 不加 STR 伤害调整（已靠多目标 + 2d6 体现价值）
-  const dmgBonus = mods.aoe ? 0 : actorStats.dmgBonus;
+  // 固定小招/AOE 不加 STR 伤害调整；战吼额外 +2 伤害。
+  const rallyDmg = actor.rallyTurns > 0 ? 2 : 0;
+  const noStrBonus = mods.aoe || !!mods.fixedDamage;
+  const dmgBonus = (noStrBonus ? 0 : actorStats.dmgBonus) + rallyDmg;
   const dmgRoll = roll(rng, dmgSpec, dmgBonus);
 
   let raw = Math.max(0, dmgRoll.total);

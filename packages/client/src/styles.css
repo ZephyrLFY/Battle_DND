@@ -288,7 +288,7 @@ button.fight {
   white-space: nowrap;
 }
 .cost-badge.spell { background: #3a2c5a; color: #c8a8ff; }
-.cost-badge.cantrip { background: #2a3a4a; color: #9fc0d8; }
+.cost-badge.free { background: #2a3a4a; color: #9fc0d8; }
 .skill-desc { font-size: 12px; color: #9fb0c9; line-height: 1.45; }
 
 /* ── 战斗操作面板 ── */
@@ -576,29 +576,42 @@ button.fight {
   .build-cols { grid-template-columns: 1fr; }
 }
 
-/* 已学技能：固定 4 个槽位，空/满槽等高（解决布局抖动） */
+/* 已学技能：固定 4 个槽位，含技能说明；空/满槽等高（解决布局抖动） */
 .equipped-slots { display: flex; flex-direction: column; gap: 6px; }
 .eq-slot {
   border-radius: 8px;
   padding: 8px 10px;
-  min-height: 52px;
+  height: 74px; /* 固定高（非 min）：标题行 + 2 行说明 + padding，空/满槽严格等高 */
   box-sizing: border-box;
+  overflow: hidden;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
 }
 .eq-slot.empty {
   border: 1px dashed #2c3650;
   color: #3c4868;
   font-size: 12px;
-  justify-content: center;
+  align-items: center;
 }
 .eq-slot.filled {
   background: #1e2740;
   border: 1px solid #3a4664;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
 }
-.eq-slot.filled .skill-head { flex: 1; min-width: 0; }
+/* 标题行：技能名/消耗 + 专属标/卸下按钮 */
+.eq-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.eq-row .skill-head { flex: 1; min-width: 0; margin-bottom: 0; }
+/* 技能说明：固定 2 行高度，超出截断，保证各槽等高 */
+.eq-desc {
+  font-size: 11px;
+  color: #9fb0c9;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .eq-slot .forget-btn {
   flex: none;
   background: #5a3030;
@@ -610,3 +623,14 @@ button.fight {
   cursor: pointer;
 }
 .eq-slot .forget-btn:hover { background: #6e3a3a; color: #fff; }
+/* 签名技能槽：金色描边 + 「专属」标，不可卸 */
+.eq-slot.signature { border-color: #b8923a; background: #2a2418; }
+.sig-tag {
+  flex: none;
+  font-size: 11px;
+  color: #f0c33c;
+  border: 1px solid #b8923a;
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}

@@ -21,13 +21,13 @@ describe('技能池静态定义', () => {
     }
   });
 
-  it('通用技能分阶：2 戏法(cost0) / 2 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
+  it('通用技能分阶：2 个 cost0 / 2 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
     const byCost = (c: number) => COMMON_SKILL_IDS.filter((id) => SKILLS[id].cost === c);
-    expect(byCost(0)).toHaveLength(2); // 石化/精准
+    expect(byCost(0)).toHaveLength(2); // 佯攻/精准
     expect(byCost(1)).toHaveLength(2); // 英勇打击/护盾格挡
     expect(byCost(2)).toHaveLength(5); // 眩晕/疾风/战吼/烈焰/治疗
     expect(byCost(3)).toHaveLength(2); // 蓄力/复活
-    // 戏法都是 Lv1 解锁
+    // cost0 技能都是 Lv1 解锁
     for (const id of byCost(0)) expect(SKILLS[id].unlockLevel).toBe(1);
   });
 
@@ -44,7 +44,7 @@ describe('技能池静态定义', () => {
   });
 
   it('cost 越高解锁等级越晚（强技能更晚）', () => {
-    // 高阶(cost3)解锁等级 > 戏法(cost0)
+    // 高阶(cost3)解锁等级 > cost0 技能
     const cost3 = ALL_SKILL_IDS.filter((id) => SKILLS[id].cost === 3);
     for (const id of cost3) expect(SKILLS[id].unlockLevel).toBeGreaterThan(1);
   });

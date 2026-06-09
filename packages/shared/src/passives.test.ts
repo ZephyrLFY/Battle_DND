@@ -102,7 +102,7 @@ describe('签名技能学习门禁', () => {
     c = learnSkill(c, 'sig_tung_combo'); // 占 1 格
     c = learnSkill(c, 'brave_strike');
     c = learnSkill(c, 'flurry');
-    c = learnSkill(c, 'stone_skin');
+    c = learnSkill(c, 'feint');
     expect(c.skills).toHaveLength(4);
     expect(learnBlockReason(c, 'precise_aim')).toContain('技能栏已满');
   });
@@ -262,40 +262,38 @@ describe('Phase 2 被动', () => {
     expect(enemy.hp).toBeLessThan(before);
   });
 
-  it('Tralalero 三足疾行：先攻必先手 + 每回合首次普攻必命中', () => {
-    // 先攻：Tralalero 对极高 DEX 角色也先手（initiativeBonus 巨大）
-    for (let seed = 0; seed < 5; seed++) {
-      const { state } = createBattle([mk('TralaleroTralala', 1)], [mk('BallerinaCappuccina', 15)], seed);
-      expect(currentFighter(state)?.archetypeId).toBe('TralaleroTralala');
+  it('Tralalero 三足疾行：先攻加成 + 首击优势（不再必先手/必中）', () => {
+    const p = passiveOf('TralaleroTralala')!;
+    expect(p.initiativeBonus).toBe(5);
+    // +5 先攻 → 多数种子下先手（但不绝对）：12 个种子里至少过半先手即可。
+    let firstCount = 0;
+    for (let seed = 0; seed < 12; seed++) {
+      const { state } = createBattle([mk('TralaleroTralala', 10)], [mk('BonecaAmbalabu', 10)], seed);
+      if (currentFighter(state)?.archetypeId === 'TralaleroTralala') firstCount++;
     }
-    // 首击必中：Tralalero 低命中也必中第一次普攻
-    let { state } = createBattle([mk('TralaleroTralala', 1)], [mk('BombardiroCrocodilo', 15)], 1);
-    // 确保当前是 Tralalero
-    expect(currentFighter(state)?.archetypeId).toBe('TralaleroTralala');
-    const r = applyAction(state, { kind: 'attack', target: { team: 'b', id: 'BombardiroCrocodilo' } });
-    const hitEv = r.events.find((e) => e.t === 'hit');
-    expect(hitEv && hitEv.t === 'hit' && hitEv.hit).toBe(true);
+    expect(firstCount).toBeGreaterThan(6);
   });
 
-  it('Chimpanzini 香蕉外壳：HP 首次 <50% 时 +2 能量（仅一次）', () => {
+  it('Chimpanzini 香蕉外壳：跌破 75/50/25 各 +3 能量，每线仅一次', () => {
     const { state } = createBattle([mk('ChimpanziniBananini', 10)], [mk('TungSahur', 10)], 1);
     const cb = fighter(state, 'a', 'ChimpanziniBananini');
     const p = passiveOf('ChimpanziniBananini')!;
-    cb.hp = Math.floor(cb.stats.maxHp * 0.4); // 跌破 50%
-    const e0 = cb.energy;
-    p.onTakeHit!(pctx(state, cb), fighter(state, 'b', 'TungSahur'), 5, false);
-    expect(cb.energy).toBe(Math.min(cb.stats.maxEnergy, e0 + 2));
-    expect(getStack(cb, 'chimpanzini.shellBroken')).toBe(1);
-    // 第二次不再触发
-    const e1 = cb.energy;
-    p.onTakeHit!(pctx(state, cb), fighter(state, 'b', 'TungSahur'), 5, false);
-    expect(cb.energy).toBe(e1);
+    const enemy = fighter(state, 'b', 'TungSahur');
+    cb.energy = 0;
+    // 跌到 60%（跨过 75 一条线）→ +3（封顶 maxEnergy）
+    cb.hp = Math.floor(cb.stats.maxHp * 0.6);
+    p.onTakeHit!(pctx(state, cb), enemy, 5, false);
+    expect(cb.energy).toBe(Math.min(cb.stats.maxEnergy, 3));
+    // 同档再受击不重复触发
+    const after = cb.energy;
+    p.onTakeHit!(pctx(state, cb), enemy, 5, false);
+    expect(cb.energy).toBe(after);
   });
 
   it('Patapim 林间回响：友方放 support 时给该施法友方回血（端到端）', () => {
     // 受伤的 FrigoCamelo 放 war_cry（support）→ 同队的 Patapim 触发 onAllySupport，回声给施法者回血。
     let { state } = createBattle(
-      [{ ...mk('FrigoCamelo', 10, ['war_cry']), energy: 5 }, mk('BrrBrrPatapim', 10)],
+      [mk('FrigoCamelo', 10, ['war_cry']), mk('BrrBrrPatapim', 10)],
       [mk('BombardiroCrocodilo', 12)], // 够肉，战斗不立即结束
       1,
     );
