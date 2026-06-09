@@ -103,11 +103,34 @@ export function useBattle(): UseBattle {
     if (lines.length) setLog((prev) => [...prev, ...lines]);
   }, []);
 
+  /**
+   * 回放清空后，把显示态的「当前行动者」对齐到逻辑态。
+   * 因为 turn 事件在行动者**行动时**才 emit：AI 回合放完后，view 仍高亮"刚行动的"敌方，
+   * 而逻辑已轮到下一位（如玩家）。纯 AI 流会被下一步立刻覆盖，但切回手动时会卡住高亮——
+   * 这里手动对齐 turnIndex，让先攻条指向「下一个该行动的人」。
+   */
+  const syncViewToLogic = useCallback(() => {
+    const v = viewRef.current;
+    const l = logicRef.current;
+    if (!v || !l) return;
+    const curRef = l.order[l.turnIndex];
+    if (!curRef) return;
+    const i = v.order.findIndex((r) => r.team === curRef.team && r.id === curRef.id);
+    if (i >= 0 && i !== v.turnIndex) {
+      v.turnIndex = i;
+      setView(cloneView(v));
+    }
+  }, []);
+
   /** 启动回放循环：按当前速度逐个出队折叠；瞬间档同步清空。清空后置 playing=false。 */
   const drain = useCallback(() => {
     const ms = SPEED_MS[speedRef.current];
     if (ms === 0) {
       // 瞬间：一次性折叠完
+      if (tickTimer.current) {
+        clearTimeout(tickTimer.current);
+        tickTimer.current = null;
+      }
       for (const ev of queueRef.current) {
         if (viewRef.current) applyEventToView(viewRef.current, ev);
       }
@@ -115,12 +138,15 @@ export function useBattle(): UseBattle {
       queueRef.current = [];
       if (viewRef.current) setView(cloneView(viewRef.current));
       if (allLines.length) setLog((prev) => [...prev, ...allLines]);
+      syncViewToLogic();
       setPlaying(false);
       return;
     }
     const tick = () => {
       const ev = queueRef.current.shift();
       if (!ev) {
+        tickTimer.current = null; // 清空句柄：否则 enqueue 的 `!tickTimer.current` 守卫永远拦截后续回放
+        syncViewToLogic(); // 对齐先攻条到下一个该行动的人
         setPlaying(false);
         return;
       }
@@ -128,7 +154,7 @@ export function useBattle(): UseBattle {
       tickTimer.current = setTimeout(tick, SPEED_MS[speedRef.current]);
     };
     tick();
-  }, [foldOne]);
+  }, [foldOne, syncViewToLogic]);
 
   /** 把一批事件入队并（若未在播）启动回放。 */
   const enqueue = useCallback(
@@ -212,7 +238,11 @@ export function useBattle(): UseBattle {
 
   const cancelPending = useCallback(() => setPending(null), []);
 
-  // 自动推进：回放清空（!playing）后，若轮到 AI（b）或开了自动且轮到 a，则推进一步。
+  // 自动推进：回放清空（!playing）后推进一步——条件是当前行动者不该等玩家输入：
+  //   ① AI 驱动（b 队，或开了自动的 a 队）；
+  //   ② 当前行动者无法行动（倒地/昏迷）——引擎会自动 skip，但需有人替它调用 applyAction，
+  //      否则手动模式下倒地的 a 角色轮到回合时既不自动跳、又没法手动操作 → 死锁。
+  const canAct = (f: { downed: boolean; stunned: number } | undefined) => !!f && !f.downed && f.stunned <= 0;
   useEffect(() => {
     if (playing) return; // 回放中不推进
     const s = logicRef.current;
@@ -220,14 +250,19 @@ export function useBattle(): UseBattle {
     const cur = currentFighter(s);
     if (!cur) return;
     const aiDriven = cur.team === 'b' || (auto && cur.team === 'a');
-    if (!aiDriven) return;
+    const mustAutoStep = aiDriven || !canAct(cur); // 倒地/昏迷者一律自动推进（引擎内部 skip）
+    if (!mustAutoStep) return;
     aiTimer.current = setTimeout(() => {
       const cs = logicRef.current;
       if (!cs || isOver(cs)) return;
       const c = currentFighter(cs);
-      if (!c || !(c.team === 'b' || (auto && c.team === 'a'))) return;
+      if (!c) return;
+      const aiNow = c.team === 'b' || (auto && c.team === 'a');
+      if (!aiNow && canAct(c)) return; // 又轮到能行动的玩家角色了 → 交还控制权
       const aiSeed = (seedRef.current * 2654435761 + cs.round * 40503 + cs.turnIndex) >>> 0;
-      const { state: ns, events } = applyAction(cs, chooseAction(cs, aiSeed));
+      // 倒地/昏迷者传任意动作即可（引擎会忽略并 skip）；其余走 AI 决策。
+      const action = canAct(c) ? chooseAction(cs, aiSeed) : ({ kind: 'attack', target: { team: 'b', id: c.id } } as Action);
+      const { state: ns, events } = applyAction(cs, action);
       logicRef.current = ns;
       enqueue(events);
     }, AI_GAP_MS);
@@ -242,8 +277,10 @@ export function useBattle(): UseBattle {
   const finished = logic ? isOver(logic) && !playing : false;
   const cur = logic ? currentFighter(logic) : undefined;
   const idle = !playing && !pending;
-  const myTurn = !!logic && !finished && cur?.team === 'a' && !auto && idle;
-  const actions = logic && !finished && cur?.team === 'a' && idle ? allActions(logic, { team: 'a', id: cur.id }) : [];
+  // 只有「能行动的」我方角色才交给玩家；倒地/昏迷的由自动推进替它 skip。
+  const myActable = cur?.team === 'a' && canAct(cur);
+  const myTurn = !!logic && !finished && myActable && !auto && idle;
+  const actions = logic && !finished && myActable && idle ? allActions(logic, { team: 'a', id: cur!.id }) : [];
   const myEnergy = cur?.team === 'a' ? cur.energy : (logic?.teams.a.find((f) => !f.dead)?.energy ?? 0);
   const winner = (logic?.winner ?? null) as 'a' | 'b' | null;
 

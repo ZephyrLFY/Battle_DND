@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   currentFighter,
   find,
@@ -6,11 +6,35 @@ import {
   type FighterRT,
   type FighterRef,
 } from '@battle-pokemon/shared';
-import { fighterColor } from './presentation.js';
+import { fighterColor, fighterSprite, shouldFlip } from './presentation.js';
 
 const W = 880;
 const H = 440;
 const INIT_BAR_H = 56; // 顶部先攻条高度
+const SPRITE = 84; // 战场角色 sprite 绘制边长（正方形）
+
+// ── sprite 图片缓存：按 archetypeId 懒加载，加载完触发一次重绘 ──
+type SpriteState = HTMLImageElement | 'loading' | 'missing';
+const spriteCache = new Map<string, SpriteState>();
+
+/** 取已就绪的 sprite 图；未加载则发起加载，load/error 后调 onReady 触发重绘。 */
+function getSprite(id: string, onReady: () => void): HTMLImageElement | null {
+  const cached = spriteCache.get(id);
+  if (cached instanceof HTMLImageElement) return cached;
+  if (cached === 'loading' || cached === 'missing') return null;
+  spriteCache.set(id, 'loading');
+  const img = new Image();
+  img.onload = () => {
+    spriteCache.set(id, img);
+    onReady();
+  };
+  img.onerror = () => {
+    spriteCache.set(id, 'missing'); // 缺图 → 永久回退圆形占位
+    onReady();
+  };
+  img.src = fighterSprite(id);
+  return null;
+}
 
 interface Slot {
   f: FighterRT;
@@ -35,6 +59,8 @@ export function BattleStage({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const slotsRef = useRef<Slot[]>([]);
+  const [bump, setBump] = useState(0); // sprite 异步加载完后触发重绘
+  const onSpriteReady = () => setBump((n) => n + 1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -70,12 +96,12 @@ export function BattleStage({
         slotsRef.current.push({ f, x, y });
         const active = cur?.id === f.id && cur?.team === f.team;
         const isCand = candKeys.has(`${f.team}:${f.id}`);
-        drawFighter(ctx, f, x, y, team === 'a' ? 'left' : 'right', active, isCand);
+        drawFighter(ctx, f, x, y, team === 'a' ? 'left' : 'right', active, isCand, onSpriteReady);
       });
     };
     layoutTeam('a');
     layoutTeam('b');
-  }, [state, candidates]);
+  }, [state, candidates, bump]);
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!onPickTarget || !candidates?.length) return;
@@ -167,12 +193,16 @@ function drawFighter(
   f: FighterRT,
   cx: number,
   cy: number,
-  facing: 'left' | 'right',
+  facing: 'left' | 'right', // 该角色所在队伍的「侧」：a 队=left（在左）、b 队=right（在右）
   active: boolean,
   candidate: boolean,
+  onSpriteReady: () => void,
 ) {
   const r = 30;
   const color = fighterColor(f);
+  // 期望朝向：在左侧的朝右、在右侧的朝左（都看向中线敌人）。
+  const want: 'left' | 'right' = facing === 'left' ? 'right' : 'left';
+  const sprite = getSprite(f.archetypeId, onSpriteReady);
 
   if (candidate) {
     ctx.strokeStyle = '#ffd24a';
@@ -192,23 +222,35 @@ function drawFighter(
   }
 
   ctx.globalAlpha = f.dead ? 0.25 : f.downed ? 0.5 : 1;
-  ctx.fillStyle = f.dead ? '#333' : color;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
 
-  if (!f.dead && !f.downed) {
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  if (sprite) {
+    // 真图：按期望朝向决定是否水平翻转；倒地额外旋转一点表现"躺下"。
+    const flip = shouldFlip(f.archetypeId, want);
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (flip) ctx.scale(-1, 1);
+    if (f.downed && !f.dead) ctx.rotate((flip ? -1 : 1) * 0.5); // 倒地微旋
+    ctx.drawImage(sprite, -SPRITE / 2, -SPRITE / 2, SPRITE, SPRITE);
+    ctx.restore();
+  } else {
+    // 回退：圆形占位 + 朝向小三角（缺图 / 加载中）。
+    ctx.fillStyle = f.dead ? '#333' : color;
     ctx.beginPath();
-    const tx = facing === 'left' ? cx + r - 6 : cx - r + 6;
-    ctx.moveTo(tx, cy - 5);
-    ctx.lineTo(tx, cy + 5);
-    ctx.lineTo(facing === 'left' ? tx + 9 : tx - 9, cy);
-    ctx.closePath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    if (!f.dead && !f.downed) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      const tx = want === 'right' ? cx + r - 6 : cx - r + 6;
+      ctx.moveTo(tx, cy - 5);
+      ctx.lineTo(tx, cy + 5);
+      ctx.lineTo(want === 'right' ? tx + 9 : tx - 9, cy);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -220,13 +262,13 @@ function drawFighter(
     ctx.fillText(badge, cx, cy - r - 4);
   }
 
-  // 名字 + 等级（画在圆下方）
+  // 名字 + 等级（画在角色下方）
   ctx.fillStyle = f.dead ? '#777' : '#fff';
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(`${f.name} Lv${f.level}`, cx, cy + r + 16);
 
-  // HP 条画在圆上方（与名字分两侧，不重叠）
+  // HP 条画在上方
   if (!f.dead) drawHpBar(ctx, cx - 38, cy - r - 16, f.hp, f.stats.maxHp);
 }
 
