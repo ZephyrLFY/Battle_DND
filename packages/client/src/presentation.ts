@@ -2,11 +2,35 @@
  * 表现层映射（颜色/图标/sprite）—— 属于 client，不污染 shared 领域逻辑。
  * 角色主题色按最高属性派生；sprite 指向 public/fighters/<id>.webp（缺图回退占位）。
  */
-import { abilityMod, type FighterRT } from '@battle-pokemon/shared';
+import { abilityMod, type FighterRT } from '@italian-brainrot/shared';
 
 /** 角色 sprite 路径（public 下，缺图时战场回退圆形占位）。 */
 export function fighterSprite(archetypeId: string): string {
   return `/fighters/${archetypeId}.webp`;
+}
+
+/**
+ * 角色一句话简介（选队转盘展示用）。取自 CHARACTERS.md 的形象描述，浓缩成一行。
+ * 表现层文案，放 client，不污染 shared。
+ */
+const BLURB: Record<string, string> = {
+  TungSahur: '🥖 持棒球棍的木头人，执拗的催促者 + 钝器打击。',
+  CappuccinoAssassino: '☕ 咖啡杯脑袋的武士刺客，双持武士刀，又快又致命。',
+  BombardiroCrocodilo: '🐊 鳄鱼身体 + 轰炸机，从天而降的范围重火力。',
+  LiriliLarila: '🌵🐘 拄拐杖的仙人掌大象，极致厚血 + 反伤，能静止时间。',
+  BrrBrrPatapim: '🌳 树根身体 + 猴脸长鼻的森林精怪，辅助 / 增益型。',
+  BombombiniGusini: '🦢💣 鹅 + 战斗机 / 手雷，自爆系，玉石俱焚。',
+  TrippiTroppi: '🐱 各种生物的超现实混合体，猫头混沌坦克，赖一条命。',
+  BonecaAmbalabu: '🐸🛞 青蛙脑袋 + 轮胎身体 + 人腿，均衡怪力士。',
+  FrigoCamelo: '🐪🧊 冰箱 + 骆驼，补给 / 续航型防御，每回合回血。',
+  TralaleroTralala: '🦈👟 三条腿穿耐克的蓝鲨鱼，极速突袭，先攻必先手。',
+  BallerinaCappuccina: '🩰☕ 咖啡杯头的芭蕾舞女，优雅闪避 + 团队增益。',
+  ChimpanziniBananini: '🍌🐒 香蕉壳里的小猩猩，灵巧 + 变形爆发。',
+};
+
+/** 取角色一句话简介（无则空串）。 */
+export function fighterBlurb(archetypeId: string): string {
+  return BLURB[archetypeId] ?? '';
 }
 
 /**

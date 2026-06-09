@@ -27,7 +27,7 @@ import {
   type Combatant,
   type FighterRef,
   type TargetType,
-} from '@battle-pokemon/shared';
+} from '@italian-brainrot/shared';
 import { eventToLines } from './battleLog.js';
 import { cloneView, applyEventToView } from './playback.js';
 

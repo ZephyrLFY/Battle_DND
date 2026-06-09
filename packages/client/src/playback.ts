@@ -12,7 +12,7 @@ import {
   type BattleEvent,
   type FighterRT,
   type FighterRef,
-} from '@battle-pokemon/shared';
+} from '@italian-brainrot/shared';
 
 const keyOf = (r: FighterRef): string => `${r.team}:${r.id}`;
 

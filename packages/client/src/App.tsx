@@ -3,42 +3,102 @@ import {
   SKILLS,
   generateEnemyTeam,
   currentFighter,
+  archetypeName,
   type Action,
   type Combatant,
-} from '@battle-pokemon/shared';
-import { TeamEditor, defaultTeam } from './TeamEditor.js';
+} from '@italian-brainrot/shared';
+import { TeamCarousel, emptyTeam } from './TeamCarousel.js';
+import { BuildEditor } from './BuildEditor.js';
 import { BattleStage } from './BattleStage.js';
 import { useBattle } from './useBattle.js';
 
+type Step = 'select' | 'build' | 'battle';
+const STEPS: { key: Step; label: string }[] = [
+  { key: 'select', label: '① 选队' },
+  { key: 'build', label: '② 养成' },
+  { key: 'battle', label: '③ 战斗' },
+];
+
 export function App() {
-  const [team, setTeam] = useState<Combatant[]>(() => defaultTeam());
+  const [team, setTeam] = useState<Combatant[]>(() => emptyTeam());
   const battle = useBattle();
-  const [phase, setPhase] = useState<'build' | 'battle'>('build');
+  const [step, setStep] = useState<Step>('select');
+  const [editIdx, setEditIdx] = useState(0); // 养成步：正在调第几个出战角色
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [battle.log]);
 
+  const canFight = team.length >= 1; // 至少 1 人即可出战（最多 LINEUP_SIZE）
+
+  const setMember = (idx: number, c: Combatant) => {
+    const next = [...team];
+    next[idx] = c;
+    setTeam(next);
+  };
+
   const onStart = () => {
     const seed = (Math.random() * 0xffffffff) >>> 0;
     const enemyLevel = team[0]?.level ?? 8;
-    const enemy = generateEnemyTeam(enemyLevel, seed ^ 0x9e3779b9);
+    // 敌队人数 = 我方出战人数（等量对战）
+    const enemy = generateEnemyTeam(enemyLevel, seed ^ 0x9e3779b9, team.length);
     battle.start(team, enemy, seed);
-    setPhase('battle');
+    setStep('battle');
   };
 
   return (
     <div className="app">
       <h1>
-        Battle Pokemon <span className="sub">— 3v3 D&D 队伍战</span>
+        意大利山海经 <span className="sub">Italian Brainrot — 3v3 D&D 队伍战</span>
       </h1>
 
-      {phase === 'build' ? (
+      {/* 步骤指示条 */}
+      <div className="stepbar">
+        {STEPS.map((s, i) => (
+          <span key={s.key} className={`stepbar-item ${step === s.key ? 'on' : ''}`}>
+            {s.label}
+            {i < STEPS.length - 1 && <span className="stepbar-sep">—</span>}
+          </span>
+        ))}
+      </div>
+
+      {step === 'select' ? (
         <>
-          <div className="section-title">配置你的队伍（3 人出战）</div>
-          <TeamEditor team={team} onChange={setTeam} />
+          <TeamCarousel team={team} onChange={setTeam} />
           <div className="controls">
+            <button
+              className="fight"
+              disabled={!canFight}
+              onClick={() => {
+                setEditIdx(0);
+                setStep('build');
+              }}
+            >
+              {canFight ? `下一步 · 养成 →（出战 ${team.length}）` : '至少选 1 人'}
+            </button>
+          </div>
+        </>
+      ) : step === 'build' ? (
+        <>
+          <div className="section-title">养成你的出战角色（加点 / 学技能）</div>
+          <div className="lineup-tabs">
+            {team.map((m, i) => (
+              <button
+                key={i}
+                className={`lineup-tab ${i === editIdx ? 'on' : ''}`}
+                onClick={() => setEditIdx(i)}
+              >
+                {archetypeName(m.archetypeId)}
+                <small> Lv{m.level}</small>
+              </button>
+            ))}
+          </div>
+          {team[editIdx] && (
+            <BuildEditor poke={team[editIdx]!} onChange={(c) => setMember(editIdx, c)} />
+          )}
+          <div className="controls">
+            <button onClick={() => setStep('select')}>← 返回选队</button>
             <button className="fight" onClick={onStart}>
               ⚔ 开始战斗（随机敌队）
             </button>
@@ -46,23 +106,24 @@ export function App() {
         </>
       ) : (
         <>
-          <BattleStage
-            state={battle.state}
-            candidates={battle.pending?.candidates}
-            onPickTarget={battle.chooseTarget}
-          />
-          <ActionPanel battle={battle} />
-          <div className={`verdict ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}>
-            {battle.finished
-              ? battle.winner === 'a'
-                ? '🎉 你的队伍获胜！'
-                : battle.winner === 'b'
-                  ? '💀 你的队伍落败'
-                  : '⚖ 双方全灭'
-              : ' '}
+          <div className="stage-wrap">
+            <BattleStage
+              state={battle.state}
+              candidates={battle.pending?.candidates}
+              onPickTarget={battle.chooseTarget}
+            />
+            {battle.finished && (
+              <div className={`verdict-overlay ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}>
+                <div className="verdict-text">
+                  {battle.winner === 'a' ? '🎉 你的队伍获胜！' : battle.winner === 'b' ? '💀 你的队伍落败' : '⚖ 双方全灭'}
+                </div>
+              </div>
+            )}
           </div>
+          <ActionPanel battle={battle} />
           <div className="controls">
-            <button onClick={() => setPhase('build')}>← 回到配置</button>
+            <button onClick={() => setStep('select')}>← 重新选队</button>
+            <button onClick={() => setStep('build')}>← 调整养成</button>
             <button className="fight" onClick={onStart}>
               再来一场
             </button>
@@ -100,7 +161,16 @@ export function App() {
 }
 
 function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
-  if (battle.finished || !battle.state) return null;
+  if (!battle.state) return null;
+
+  // 战斗结束：保持面板占位（不塌缩布局），胜负信息由战场蒙层展示。
+  if (battle.finished) {
+    return (
+      <div className="action-panel">
+        <div className="ap-title">战斗结束</div>
+      </div>
+    );
+  }
 
   // 选目标阶段
   if (battle.pending) {
@@ -126,18 +196,20 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
 
   const cur = currentFighter(battle.state);
   const waiting = !battle.myTurn;
-  const actorName = cur?.team === 'a' ? cur.id : null;
+  const curName = cur ? archetypeName(cur.id) : '';
+  // 标题按「显示态当前角色属于哪队」判断，回放中也给出有意义的回合归属，而非笼统的"回放中"。
+  const title = cur?.team === 'b'
+    ? `敌方回合 · ${curName}`
+    : battle.auto
+      ? `自动战斗 · ${curName}`
+      : cur?.team === 'a'
+        ? `${curName} 的回合`
+        : '你的回合';
 
   return (
     <div className="action-panel">
       <div className="ap-title">
-        {battle.playing
-          ? '战斗回放中…'
-          : battle.auto
-            ? '自动战斗中…'
-            : actorName
-              ? `${actorName} 的回合`
-              : '你的回合'}
+        {title}
         <span className="ap-slots">⚡ 能量 {battle.myEnergy}</span>
       </div>
       <div className="ap-buttons">
@@ -157,7 +229,7 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
       </div>
       {waiting && !battle.auto && (
         <div className="ap-overlay">
-          <span>{battle.playing ? '战斗回放中…' : '敌方行动中…'}</span>
+          <span>{cur?.team === 'b' ? '敌方行动中…' : '处理中…'}</span>
         </div>
       )}
     </div>

@@ -1,15 +1,14 @@
 /**
- * 养成编辑器：选精灵 + 调等级 + 加点/洗点 + 选学技能。
+ * 养成编辑器：调等级 + 加点/洗点 + 选学技能。
  * 战斗前用它配好我方 build。所有变更走 shared/leveling 的纯函数。
  */
 import {
-  ARCHETYPE_IDS,
   ABILITY_KEYS,
   ABILITY_LABEL,
   SKILLS,
   MAX_EQUIPPED_SKILLS,
   MAX_ABILITY,
-  newCombatant,
+  archetypeName,
   statsOf,
   abilitiesOf,
   allocate,
@@ -20,10 +19,11 @@ import {
   forgetSkill,
   canLearn,
   learnBlockReason,
+  signatureOwner,
   type Combatant,
   type AbilityKey,
   type SkillId,
-} from '@battle-pokemon/shared';
+} from '@italian-brainrot/shared';
 
 export function BuildEditor({
   poke,
@@ -37,7 +37,6 @@ export function BuildEditor({
   const pts = availablePoints(poke);
   const learnable = learnableSkills(poke);
 
-  const setArchetype = (id: string) => onChange(newCombatant(id));
   const setLevel = (level: number) => {
     // 改等级后若可用点变负（降级），洗点重置以保持合法
     const next = { ...poke, level };
@@ -45,80 +44,93 @@ export function BuildEditor({
   };
 
   return (
-    <div className="build">
-      <div className="build-row">
-        <select value={poke.archetypeId} onChange={(e) => setArchetype(e.target.value)}>
-          {ARCHETYPE_IDS.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
+    <div className="build build-cols">
+      {/* 左列：加点 */}
+      <div className="build-col build-col-left">
+        <div className="build-row">
+          <span className="build-name">{archetypeName(poke.archetypeId)}</span>
+          <label className="lvl">
+            等级 {poke.level}
+            <input
+              type="range"
+              min={1}
+              max={15}
+              value={poke.level}
+              onChange={(e) => setLevel(Number(e.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="col-title">属性加点</div>
+        <div className="abilities">
+          {ABILITY_KEYS.map((k) => (
+            <AbilityRow
+              key={k}
+              akey={k}
+              value={abil[k]}
+              canAdd={pts > 0 && abil[k] < MAX_ABILITY}
+              canSub={poke.allocations[k] > 0}
+              onAdd={() => onChange(allocate(poke, k, 1))}
+              onSub={() => onChange(allocate(poke, k, -1))}
+            />
           ))}
-        </select>
-        <label className="lvl">
-          等级 {poke.level}
-          <input
-            type="range"
-            min={1}
-            max={15}
-            value={poke.level}
-            onChange={(e) => setLevel(Number(e.target.value))}
-          />
-        </label>
-      </div>
+        </div>
 
-      <div className="abilities">
-        {ABILITY_KEYS.map((k) => (
-          <AbilityRow
-            key={k}
-            akey={k}
-            value={abil[k]}
-            canAdd={pts > 0 && abil[k] < MAX_ABILITY}
-            canSub={poke.allocations[k] > 0}
-            onAdd={() => onChange(allocate(poke, k, 1))}
-            onSub={() => onChange(allocate(poke, k, -1))}
-          />
-        ))}
-      </div>
+        <div className="build-controls">
+          <span className={`pts ${pts > 0 ? 'has' : ''}`}>剩余点数：{pts}</span>
+          <button onClick={() => onChange(respec(poke))}>洗点</button>
+        </div>
 
-      <div className="build-controls">
-        <span className={`pts ${pts > 0 ? 'has' : ''}`}>剩余点数：{pts}</span>
-        <button onClick={() => onChange(respec(poke))}>洗点</button>
-      </div>
+        <div className="derived">
+          <span>HP {stats.maxHp}</span>
+          <span>AC {stats.ac}</span>
+          <span>命中 +{stats.toHit}</span>
+          <span>伤害 +{stats.dmgBonus}</span>
+          <span>先攻 {fmt(stats.initiative)}</span>
+          <span>⚡ 能量上限 {stats.maxEnergy}</span>
+          {stats.lifestealRate > 0 && <span>🩸 吸血 {Math.round(stats.lifestealRate * 100)}%</span>}
+        </div>
 
-      <div className="derived">
-        <span>HP {stats.maxHp}</span>
-        <span>AC {stats.ac}</span>
-        <span>命中 +{stats.toHit}</span>
-        <span>伤害 +{stats.dmgBonus}</span>
-        <span>先攻 {fmt(stats.initiative)}</span>
-        <span>⚡ 能量上限 {stats.maxEnergy}</span>
-        {stats.lifestealRate > 0 && <span>🩸 吸血 {Math.round(stats.lifestealRate * 100)}%</span>}
-      </div>
-
-      <div className="skills">
-        <div className="skills-title">
+        {/* 已学技能放左列底部：固定 MAX_EQUIPPED_SKILLS 个槽位，高度恒定，不随增删抖动 */}
+        <div className="col-title">
           已学技能（{poke.skills.length} / {MAX_EQUIPPED_SKILLS}）
-          {poke.skills.length >= MAX_EQUIPPED_SKILLS && <span className="bar-full"> 技能栏已满</span>}
         </div>
-        {poke.skills.length === 0 && <div className="hint">还没学技能（点下方学习）</div>}
-        <div className="skill-list">
-          {poke.skills.map((id) => (
-            <div key={id} className="skill-card learned">
-              <SkillHeader id={id} />
-              <div className="skill-desc">{SKILLS[id].desc}</div>
-              <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
-                卸下
-              </button>
-            </div>
-          ))}
+        <div className="equipped-slots">
+          {Array.from({ length: MAX_EQUIPPED_SKILLS }).map((_, i) => {
+            const id = poke.skills[i];
+            if (!id) return <div key={i} className="eq-slot empty">空技能位</div>;
+            return (
+              <div key={i} className="eq-slot filled">
+                <SkillHeader id={id} />
+                <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
+                  ✕ 卸下
+                </button>
+              </div>
+            );
+          })}
         </div>
-        {learnable.length > 0 && (
-          <>
-            <div className="skills-title">技能池（按解锁等级排序）</div>
+      </div>
+
+      {/* 右列：技能池 */}
+      <div className="build-col build-col-right">
+        <div className="skills">
+          <div className="skills-title">
+            技能池（按解锁等级排序）
+            {poke.skills.length >= MAX_EQUIPPED_SKILLS && <span className="bar-full"> · 技能栏已满</span>}
+          </div>
+          {learnable.length === 0 ? (
+            <div className="hint">已无可学技能</div>
+          ) : (
             <div className="skill-list">
               {learnable.map((id) => {
                 const ok = canLearn(poke, id);
                 const reason = learnBlockReason(poke, id);
+                // 是否有「解锁门槛」（等级 or 签名专属）。只有有门槛的技能才显示解锁状态行，
+                // Lv1 普通技能不显示（避免冗余「可学习」，也让它们矮一点）。
+                const levelGate = SKILLS[id].unlockLevel > 1;
+                const sigGate = !!signatureOwner(id);
+                const gated = levelGate || sigGate;
+                const gateMet = poke.level >= SKILLS[id].unlockLevel; // 签名门槛在 learnable 已过滤
                 return (
                   <button
                     key={id}
@@ -126,15 +138,20 @@ export function BuildEditor({
                     onClick={() => ok && onChange(learnSkill(poke, id))}
                     disabled={!ok}
                   >
-                    <SkillHeader id={id} prefix={ok ? '＋ ' : '🔒 '} />
+                    <SkillHeader id={id} prefix={!gated ? '＋ ' : gateMet ? '🔓 ' : '🔒 '} />
                     <div className="skill-desc">{SKILLS[id].desc}</div>
-                    {!ok && reason && <div className="lock-reason">{reason}</div>}
+                    {/* 有门槛的技能：那行始终在，升级前显示原因+🔒，达成后原地替换为「已解锁」+🔓 */}
+                    {gated && (
+                      <div className={`skill-status ${gateMet ? 'ok' : 'locked'}`}>
+                        {gateMet ? '已解锁' : reason}
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

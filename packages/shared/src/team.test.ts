@@ -46,6 +46,14 @@ describe('generateEnemyTeam', () => {
     expect(new Set(t.map((c) => c.archetypeId)).size).toBe(LINEUP_SIZE);
   });
 
+  it('size 参数控制人数（等量对战）：1/2 人也能生成且不重复', () => {
+    for (const size of [1, 2, 3]) {
+      const t = generateEnemyTeam(8, 5, size);
+      expect(t).toHaveLength(size);
+      expect(new Set(t.map((c) => c.archetypeId)).size).toBe(size);
+    }
+  });
+
   it('确定性：同 (level, seed) 恒等', () => {
     expect(generateEnemyTeam(8, 42)).toEqual(generateEnemyTeam(8, 42));
   });
