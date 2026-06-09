@@ -295,7 +295,7 @@ describe('Phase 2 被动', () => {
   it('Patapim 林间回响：友方放 support 时给该施法友方回血（端到端）', () => {
     // 受伤的 FrigoCamelo 放 war_cry（support）→ 同队的 Patapim 触发 onAllySupport，回声给施法者回血。
     let { state } = createBattle(
-      [{ ...mk('FrigoCamelo', 10, ['war_cry']), energy: 5 }, mk('BrrBrrPatapim', 10)],
+      [mk('FrigoCamelo', 10, ['war_cry']), mk('BrrBrrPatapim', 10)],
       [mk('BombardiroCrocodilo', 12)], // 够肉，战斗不立即结束
       1,
     );

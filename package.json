@@ -14,6 +14,7 @@
     "dev:client": "npm run dev --workspace packages/client",
     "dev:server": "npm run dev --workspace packages/server",
     "sim": "tsx packages/shared/src/sim.cli.ts",
+    "sim:balance": "tsx packages/shared/src/sim.cli.ts balance",
     "art": "node art/process.mjs"
   },
   "devDependencies": {

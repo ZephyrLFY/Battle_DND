@@ -20,6 +20,7 @@ import {
   canLearn,
   learnBlockReason,
   signatureOwner,
+  isOwnSignature,
   type Combatant,
   type AbilityKey,
   type SkillId,
@@ -99,12 +100,17 @@ export function BuildEditor({
           {Array.from({ length: MAX_EQUIPPED_SKILLS }).map((_, i) => {
             const id = poke.skills[i];
             if (!id) return <div key={i} className="eq-slot empty">空技能位</div>;
+            const signature = isOwnSignature(poke, id);
             return (
-              <div key={i} className="eq-slot filled">
+              <div key={i} className={`eq-slot filled ${signature ? 'signature' : ''}`}>
                 <SkillHeader id={id} />
-                <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
-                  ✕ 卸下
-                </button>
+                {signature ? (
+                  <span className="sig-tag">专属</span>
+                ) : (
+                  <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
+                    ✕ 卸下
+                  </button>
+                )}
               </div>
             );
           })}

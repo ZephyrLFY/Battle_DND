@@ -142,6 +142,84 @@ export function roundRobin(level: number, specs: BuildSpec[], gamesPer: number):
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+// ─────────────────────────────────────────────────────────────────────────
+// 角色平衡：每个 archetype 只带自己的签名 + 被动（不学通用技能），最干净隔离单体强度
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * 造一个「纯签名」build：自带签名（newCombatant 已放进 skills[0]）+ 被动 + 按天赋主属性撒点，
+ * 不学任何通用技能。用于隔离对比各角色本体强度。
+ */
+export function signatureCombatant(archetypeId: string, level: number): Combatant {
+  let c = { ...newCombatant(archetypeId), level };
+  // 按天赋找主属性，把可用点全砸进去（溢出到次高）
+  const t = abilitiesOf(newCombatant(archetypeId));
+  const order = (['str', 'dex', 'con'] as AbilityKey[]).sort((a, b) => t[b] - t[a]);
+  let guard = 0;
+  while (guard++ < 300 && availablePointsOf(c) > 0) {
+    let added = false;
+    for (const k of order) {
+      try {
+        c = allocate(c, k, 1);
+        added = true;
+        break;
+      } catch {
+        /* 满，下一个 */
+      }
+    }
+    if (!added) break;
+  }
+  return c;
+}
+
+/** 全 12 角色的纯签名 build（用于循环赛）。 */
+export function signatureRoster(level: number): { id: string; combatant: Combatant }[] {
+  return ARCHETYPE_IDS.map((id) => ({ id, combatant: signatureCombatant(id, level) }));
+}
+
+export interface ArchetypeRow {
+  id: string;
+  vs: Record<string, number>;
+  overall: number;
+}
+
+/** 内部：N 人对 N 人的角色循环赛（teamSize=1 → 1v1 单体；=3 → 同名 3 人队）。 */
+function archetypeRoundRobinN(level: number, gamesPer: number, teamSize: number): ArchetypeRow[] {
+  const roster = signatureRoster(level);
+  const mkTeam = (c: Combatant) => Array.from({ length: teamSize }, () => c);
+  const rows: ArchetypeRow[] = [];
+  for (const a of roster) {
+    const vs: Record<string, number> = {};
+    let sum = 0;
+    for (const b of roster) {
+      const r = runMatch(mkTeam(a.combatant), mkTeam(b.combatant), gamesPer);
+      vs[b.id] = round2(r.aWinRate);
+      sum += r.aWinRate;
+    }
+    rows.push({ id: a.id, vs, overall: round2(sum / roster.length) });
+  }
+  return rows;
+}
+
+/** 1v1 单角色对轰：隔离单体强度。 */
+export function archetypeDuel(level: number, gamesPer: number): ArchetypeRow[] {
+  return archetypeRoundRobinN(level, gamesPer, 1);
+}
+
+/** 3v3 同名队：验证团队联动被动（CA↔BC / Patapim 回声等）。 */
+export function archetypeRoundRobin(level: number, gamesPer: number): ArchetypeRow[] {
+  return archetypeRoundRobinN(level, gamesPer, 3);
+}
+
+/** 角色循环赛结果 → 按 overall 排序的可读排名表（矩阵太大，只打排名 + overall）。 */
+export function formatArchetypeRanking(rows: ArchetypeRow[], title: string): string {
+  const sorted = [...rows].sort((a, b) => b.overall - a.overall);
+  const lines = sorted.map(
+    (r, i) => `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(22)} ${(r.overall * 100).toFixed(0)}%`,
+  );
+  return [`=== ${title}（overall 胜率排名）===`, ...lines].join('\n');
+}
+
 /** 把循环赛结果格式化成可读表格文本。 */
 export function formatRoundRobin(rows: RoundRobinRow[]): string {
   const names = rows.map((r) => r.build);

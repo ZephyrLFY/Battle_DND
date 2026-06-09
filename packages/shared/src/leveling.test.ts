@@ -69,20 +69,21 @@ describe('respec — 洗点', () => {
     expect(r.allocations).toEqual({ str: 0, dex: 0, con: 0 });
     expect(abilitiesOf(r)).toEqual(abilitiesOf(newCombatant('TralaleroTralala')));
     expect(r.level).toBe(8);
-    expect(r.skills).toEqual(['flurry']);
+    // 签名（出生自带）+ 后学的 flurry
+    expect(r.skills).toEqual(['sig_tralalero_dash', 'flurry']);
   });
 });
 
 describe('技能学习', () => {
-  it('learnableSkills 初始为 11 通用 + 1 自己的签名 = 12（未学过的）', () => {
-    // 拥有者能看到自己的签名技能；他人签名不出现在池里。
-    expect(learnableSkills(newCombatant('TrippiTroppi'))).toHaveLength(12);
+  it('learnableSkills 初始 = 11 通用（自己的签名已自带、不在池里）', () => {
+    // 签名出生自带占栏 → 不出现在可学池；他人签名也不出现。
+    expect(learnableSkills(newCombatant('TrippiTroppi'))).toHaveLength(11);
   });
 
-  it('Lv1 戏法可学；学后从可学列表移除', () => {
-    const p = learnSkill(newCombatant('TrippiTroppi'), 'stone_skin'); // 戏法 Lv1
+  it('Lv1 技能可学；学后从可学列表移除', () => {
+    const p = learnSkill(newCombatant('TrippiTroppi'), 'stone_skin'); // cost0 Lv1
     expect(p.skills).toContain('stone_skin');
-    expect(learnableSkills(p)).toHaveLength(11);
+    expect(learnableSkills(p)).toHaveLength(10);
   });
 
   it('未达解锁等级不可学', () => {
@@ -98,27 +99,34 @@ describe('技能学习', () => {
     expect(learnSkill(p, 'brave_strike').skills).toContain('brave_strike');
   });
 
-  it('技能栏最多 4 个，满了不可学', () => {
+  it('技能栏最多 4 个（含自带签名），满了不可学', () => {
+    // TrippiTroppi 出生自带签名占 1 格，再学 3 个即满。
     let p = { ...newCombatant('TrippiTroppi'), level: 8 };
     p = learnSkill(p, 'shield_block');
     p = learnSkill(p, 'stone_skin');
     p = learnSkill(p, 'precise_aim');
-    p = learnSkill(p, 'brave_strike');
+    expect(p.skills).toHaveLength(4);
     expect(skillBarFull(p)).toBe(true);
     expect(canLearn(p, 'stun_strike')).toBe(false);
     expect(learnBlockReason(p, 'stun_strike')).toContain('技能栏已满');
     expect(() => learnSkill(p, 'stun_strike')).toThrow();
   });
 
-  it('卸下技能后腾出栏位可再学', () => {
+  it('卸下（非签名）技能后腾出栏位可再学', () => {
     let p = { ...newCombatant('TrippiTroppi'), level: 8 };
     p = learnSkill(p, 'shield_block');
     p = learnSkill(p, 'stone_skin');
-    p = learnSkill(p, 'precise_aim');
-    p = learnSkill(p, 'brave_strike');
-    p = forgetSkill(p, 'brave_strike');
-    expect(p.skills).not.toContain('brave_strike');
+    p = learnSkill(p, 'precise_aim'); // 满（含签名 4 个）
+    p = forgetSkill(p, 'precise_aim');
+    expect(p.skills).not.toContain('precise_aim');
     expect(canLearn(p, 'stun_strike')).toBe(true);
+  });
+
+  it('签名技能不可卸（forgetSkill 拒绝）', () => {
+    const p = newCombatant('TrippiTroppi'); // 自带 sig_trippi_hiss
+    expect(p.skills).toContain('sig_trippi_hiss');
+    const after = forgetSkill(p, 'sig_trippi_hiss');
+    expect(after.skills).toContain('sig_trippi_hiss'); // 仍在
   });
 
   it('重复学 / 未知技能抛错', () => {

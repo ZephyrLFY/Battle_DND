@@ -108,15 +108,18 @@ export interface Combatant {
 
 const ZERO_ALLOC: Abilities = { str: 0, dex: 0, con: 0 };
 
-/** 用天赋起点 new 一个 1 级角色（未加点、未学技能）。 */
+/**
+ * 用天赋起点 new 一个 1 级角色（未加点）。
+ * 签名技能是角色身份：出生即自带，占技能栏第一格（不可卸，仍按 cost 耗能）。
+ */
 export function newCombatant(archetypeId: string): Combatant {
-  archetype(archetypeId); // 校验存在
+  const a = archetype(archetypeId); // 校验存在 + 取签名
   return {
     archetypeId,
     level: 1,
     exp: 0,
     allocations: { ...ZERO_ALLOC },
-    skills: [],
+    skills: a.signatureSkillId ? [a.signatureSkillId] : [],
   };
 }
 

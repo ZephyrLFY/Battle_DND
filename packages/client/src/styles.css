@@ -610,3 +610,14 @@ button.fight {
   cursor: pointer;
 }
 .eq-slot .forget-btn:hover { background: #6e3a3a; color: #fff; }
+/* 签名技能槽：金色描边 + 「专属」标，不可卸 */
+.eq-slot.signature { border-color: #b8923a; background: #2a2418; }
+.sig-tag {
+  flex: none;
+  font-size: 11px;
+  color: #f0c33c;
+  border: 1px solid #b8923a;
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
