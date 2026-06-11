@@ -47,12 +47,17 @@ export interface FighterRT {
   stoneAmount: number;
   /** 本回合 AC 临时加成（护盾格挡），自己下个回合开始清零。 */
   acBonus: number;
+  /** acBonus 剩余回合数：>0 时 acBonus 生效，归零时 acBonus 清零（与 acDebuff 同节奏）。 */
+  acBonusTurns: number;
   /** 护盾反弹层数（被攻击反弹 1d4）。 */
   thorns: number;
   /** 蓄力：下次攻击强化（charge_smash）。 */
   charged: boolean;
   /** 战吼增益：剩余回合内攻击命中 +2 且伤害 +2。 */
   rallyTurns: number;
+  /** 通用伤害增益（华尔兹等）：剩余回合内攻击伤害 +dmgBuffAmt。 */
+  dmgBuffTurns: number;
+  dmgBuffAmt: number;
   /** 命中惩罚（哈气等 debuff）：剩余回合内自身攻击命中 −hitPenaltyAmt。 */
   hitPenaltyTurns: number;
   hitPenaltyAmt: number;

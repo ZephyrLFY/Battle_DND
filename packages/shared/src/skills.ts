@@ -196,16 +196,16 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 2,
     unlockLevel: 6,
-    desc: '【Bombombini 专属】对单体造成 4d6 伤害，自身受到当前生命 1/4 的反噬。配合「引信」层数威力暴涨。',
+    desc: '【Bombombini 专属】对单体造成 4d6 必中伤害，自身受到实际造成伤害 3/4 的反噬。配合「引信」层数威力暴涨（反噬也随之上涨）。',
   },
   sig_trippi_hiss: {
     id: 'sig_trippi_hiss',
     name: '哈气',
     category: 'support',
     targetType: 'one_enemy',
-    cost: 1,
+    cost: 0, // 平衡补丁：1→0。猫哈气不要钱——免费 tempo 工具（原 EV 低于普攻，sim 使用率≈0）。
     unlockLevel: 3,
-    desc: '【Trippi 专属】猫式威吓：令一个敌人下回合命中 −4。',
+    desc: '【Trippi 专属】猫式威吓（不耗能）：抓一爪（1d4）并令一个敌人接下来 2 回合命中 −4。',
   },
   sig_lirili_timestop: {
     id: 'sig_lirili_timestop',
@@ -232,7 +232,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'all_allies',
     cost: 2,
     unlockLevel: 6,
-    desc: '【Ballerina 专属】优雅起舞：全体友方下回合命中 +2 且 AC +1。',
+    desc: '【Ballerina 专属】优雅起舞：全体友方下回合命中 +2、AC +1 且伤害 +4（含基础鼓舞 +2 与舞步强化 +2）。', // 平衡补丁：附带伤害增益
   },
   sig_bombardiro_carpet: {
     id: 'sig_bombardiro_carpet',
@@ -241,14 +241,14 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'all_enemies',
     cost: 3,
     unlockLevel: 8,
-    desc: '【Bombardiro 专属】对全体敌方各 2d6 轰炸；每个目标体质豁免失败则被震慑（昏迷）。',
+    desc: '【Bombardiro 专属】对全体敌方各 2d6 轰炸；每个目标体质豁免（DC 11）失败则被震慑（昏迷）。',
   },
   sig_patapim_vines: {
     id: 'sig_patapim_vines',
     name: '藤蔓缠绕',
     category: 'attack',
     targetType: 'one_enemy',
-    cost: 2,
+    cost: 1, // 平衡补丁：2→1。原成本下定身 EV 抵不过能量机会成本（sim 使用率≈0）。
     unlockLevel: 6,
     desc: '【Patapim 专属】攻击命中并令目标定身：体质豁免失败则下回合昏迷。',
   },
@@ -268,7 +268,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'self',
     cost: 2,
     unlockLevel: 6,
-    desc: '【Frigo 专属】本回合 AC +3，并在接下来 2 回合免疫控制（眩晕/定身/哈气）。',
+    desc: '【Frigo 专属】接下来 3 回合 AC +3 并免疫控制（眩晕/定身/哈气）。', // 平衡补丁二轮：持续 2→3 回合
   },
   sig_tralalero_dash: {
     id: 'sig_tralalero_dash',
@@ -286,7 +286,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 0,
     unlockLevel: 3,
-    desc: '【Chimpanzini 专属】攻击次数 = 当前能量数（≥1 次）；打完清空全部能量。',
+    desc: '【Chimpanzini 专属】攻击次数 = 当前能量数（≥1 次），每击命中 +2，且第 N 击命中追加 N−1 点伤害（越打越疯）；打完清空全部能量。', // 平衡补丁：+2 命中 + 渐入佳境 flat 伤害
   },
 };
 

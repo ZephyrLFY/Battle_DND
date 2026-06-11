@@ -61,9 +61,12 @@ function mkFighter(team: Side, c: Combatant): FighterRT {
     stoneTurns: 0,
     stoneAmount: 0,
     acBonus: 0,
+    acBonusTurns: 0,
     thorns: 0,
     charged: false,
     rallyTurns: 0,
+    dmgBuffTurns: 0,
+    dmgBuffAmt: 0,
     hitPenaltyTurns: 0,
     hitPenaltyAmt: 0,
     acDebuffTurns: 0,
@@ -274,6 +277,10 @@ export function applyAction(
   // 衰减"回合开始"生效的临时态
   if (actor.stoneTurns > 0) actor.stoneTurns--;
   if (actor.rallyTurns > 0) actor.rallyTurns--;
+  if (actor.dmgBuffTurns > 0) {
+    actor.dmgBuffTurns--;
+    if (actor.dmgBuffTurns === 0) actor.dmgBuffAmt = 0;
+  }
   if (actor.hitPenaltyTurns > 0) {
     actor.hitPenaltyTurns--;
     if (actor.hitPenaltyTurns === 0) actor.hitPenaltyAmt = 0;
@@ -281,6 +288,11 @@ export function applyAction(
   if (actor.acDebuffTurns > 0) {
     actor.acDebuffTurns--;
     if (actor.acDebuffTurns === 0) actor.acDebuffAmt = 0;
+  }
+  // acBonus 衰减（修复：原实现只加不减，"本回合 AC+3"会永久叠加）
+  if (actor.acBonusTurns > 0) {
+    actor.acBonusTurns--;
+    if (actor.acBonusTurns === 0) actor.acBonus = 0;
   }
   if (actor.controlImmuneTurns > 0) actor.controlImmuneTurns--;
 
@@ -471,6 +483,11 @@ function doAttack(
   });
 
   if (!hit) {
+    // 闪避回能：攻击落空时，受击方 +1 能量（高 AC/敏捷向的"防御转资源"，与普攻命中回能对偶）。
+    if (!target.downed && !target.dead && target.energy < target.stats.maxEnergy) {
+      target.energy = Math.min(target.stats.maxEnergy, target.energy + 1);
+      emit({ t: 'energy', who: refOf(target), delta: 1, now: target.energy });
+    }
     passiveOf(target.archetypeId)?.onMissed?.(passiveCtx(state, target, rng, emit), actor);
     maybeThorns(actor, target, rng, emit);
     return false;
@@ -481,8 +498,9 @@ function doAttack(
   if (crit) dmgSpec = doubleDice(dmgSpec);
   // 固定小招/AOE 不加 STR 伤害调整；战吼额外 +2 伤害。
   const rallyDmg = actor.rallyTurns > 0 ? 2 : 0;
+  const buffDmg = actor.dmgBuffTurns > 0 ? actor.dmgBuffAmt : 0;
   const noStrBonus = mods.aoe || !!mods.fixedDamage;
-  const dmgBonus = (noStrBonus ? 0 : actorStats.dmgBonus) + rallyDmg;
+  const dmgBonus = (noStrBonus ? 0 : actorStats.dmgBonus) + rallyDmg + buffDmg;
   const dmgRoll = roll(rng, dmgSpec, dmgBonus);
 
   let raw = Math.max(0, dmgRoll.total);

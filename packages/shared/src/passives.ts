@@ -72,8 +72,8 @@ function teammateDead(ctx: PassiveCtx, team: 'a' | 'b', archetypeId: string): bo
 // 被动注册表
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Tung 叠击层数上限。 */
-const TUNG_STACK_CAP = 5;
+/** Tung 叠击层数上限。平衡补丁：5→3（flat 叠伤在 1d6 伤害尺度上过强，压缩头部）。 */
+const TUNG_STACK_CAP = 3;
 
 export const PASSIVES: Record<string, Passive> = {
   // 🥖 Tung Tung Tung Sahur ——「不眠的梆子」
@@ -120,16 +120,17 @@ export const PASSIVES: Record<string, Passive> = {
   },
 
   // 🐸 Trippi Troppi ——「九命怪猫」
-  // 首次将被打至倒地时不倒，改以 1 HP 存活并清除负面状态（整场仅一次）。
+  // 首次将被打至倒地时不倒，改以 25% maxHp 存活并清除负面状态（整场仅一次）。
   TrippiTroppi: {
     onWouldGoDown: (ctx) => {
       if (getStack(ctx.self, 'trippi.ninthUsed') > 0) return false; // 已用过 → 正常倒地
       setStack(ctx.self, 'trippi.ninthUsed', 1);
-      ctx.self.hp = 1;
+      // 平衡补丁：1 HP → 25% maxHp 起死回生（原 1 HP 基本下一刀就死，被动形同虚设）
+      ctx.self.hp = Math.max(1, Math.floor(ctx.self.stats.maxHp * 0.25));
       ctx.self.stunned = 0;
       ctx.self.hitPenaltyTurns = 0;
       ctx.self.hitPenaltyAmt = 0;
-      ctx.emit({ t: 'buff', who: ref(ctx.self), note: '九命怪猫！以 1 HP 起死回生，清除负面' });
+      ctx.emit({ t: 'buff', who: ref(ctx.self), note: `九命怪猫！以 ${ctx.self.hp} HP 起死回生，清除负面` });
       // 濒死反扑（炸毛）：固定总伤害由全体存活敌人分摊 → 1v1 全砸一人(爆发足)、3v3 摊薄(不群秒)。
       const enemyTeam = ctx.self.team === 'a' ? 'b' : 'a';
       const targets = ctx.state.teams[enemyTeam].filter((e) => !e.dead && !e.downed);
@@ -152,14 +153,15 @@ export const PASSIVES: Record<string, Passive> = {
   },
 
   // ☕ Cappuccino Assassino ——「咖啡与舞伴」（↔ Ballerina 联动）
-  // BC 存活时自身全战斗属性 ×1.1、BC 阵亡时 ×1.3；攻击敌方 BC 时自身伤害 ×0.9；
+  // BC 存活时自身全战斗属性 ×1.3、BC 阵亡时 ×1.5；攻击敌方 BC 时自身伤害 ×0.9；
   // 受到的治疗/增益在 BC 存活时增强（modifyIncomingHeal）。
+  // 平衡补丁：1.1/1.3 → 1.3/1.5。pair 专项实测旧数值下 CA+BC 同队收益 −4pt（反协同）。
   CappuccinoAssassino: {
     modifyStats: (base, ctx) => {
       const mult = teammateDead(ctx, ctx.self.team, 'BallerinaCappuccina')
-        ? 1.3
+        ? 1.5
         : teammateAlive(ctx, ctx.self.team, 'BallerinaCappuccina')
-          ? 1.1
+          ? 1.3
           : 1;
       if (mult === 1) return base;
       return {
@@ -178,9 +180,10 @@ export const PASSIVES: Record<string, Passive> = {
     },
   },
 
-  // 🐊 Bombardiro Crocodilo ——「装甲蒙皮」：常驻减伤 2。
+  // 🐊 Bombardiro Crocodilo ——「装甲蒙皮」：常驻减伤 1。
+  // 平衡补丁：2→1。flat −2 在 1d6 伤害尺度 ≈25-35% 免伤且对多段攻击每段各减，双榜第一的根因。
   BombardiroCrocodilo: {
-    modifyIncomingDamage: (_ctx, _attacker, raw) => Math.max(0, raw - 2),
+    modifyIncomingDamage: (_ctx, _attacker, raw) => Math.max(0, raw - 1),
   },
 
   // 🌳 Brr Brr Patapim ——「林间回响」
@@ -207,11 +210,12 @@ export const PASSIVES: Record<string, Passive> = {
     },
   },
 
-  // 🐪🧊 Frigo Camelo ——「冷藏续航」：每回合开始回复 1d4 HP。
+  // 🐪🧊 Frigo Camelo ——「冷藏续航」：每回合开始回复 1d6 HP。
+  // 平衡补丁：1d4→1d6（双榜垫底 27/34；1d4 在新 AI 的爆发节奏下续不动）。
   FrigoCamelo: {
     onTurnStart: (ctx) => {
       if (ctx.self.hp >= ctx.self.stats.maxHp) return;
-      const r = roll(ctx.rng, '1d4');
+      const r = roll(ctx.rng, '1d6');
       const before = ctx.self.hp;
       ctx.self.hp = Math.min(ctx.self.stats.maxHp, ctx.self.hp + r.total);
       if (ctx.self.hp > before) {
