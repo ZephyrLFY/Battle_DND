@@ -1,20 +1,50 @@
 # 美术资产管线
 
 把角色原图（你用 AI 去背/统一画风后的全身图）放进 `raw/`，跑脚本统一成战场 sprite。
+战场背景图放进 `raw/bg/`。
 
 ## 用法
 
 ```bash
-# 把原图放到 art/raw/，文件名 = roster 的 archetype id（见下表），如 TungSahur.png
-npm run art              # 处理 raw/ 下所有图
-npm run art TungSahur    # 只处理指定角色
+# 角色图放 art/raw/，文件名 = roster 的 archetype id（见下表），如 TungSahur.png
+# 姿势变体加后缀：TungSahur.attack.png / TungSahur.hit.png / TungSahur.downed.png
+# 背景图放 art/raw/bg/，文件名随意（会显示在游戏的背景下拉框里）
+npm run art              # 处理 raw/ 全部角色图 + raw/bg/ 全部背景
+npm run art TungSahur    # 只处理指定角色（含其所有姿势；不动背景）
 ```
 
-输出：`packages/client/public/fighters/<id>.webp`（1024×1024，透明背景，居中留边）。
-战场会自动用它替换圆形占位；**缺图的角色回退占位**，可以一张一张加。
+## 角色姿势（静态图 + 程序化动效 = 伪动画）
 
-处理做的事（第二道）：trim 透明边 → 等比缩放居中进 1024 正方形 → 导出 WebP。
-**不做去背**——假设输入已是透明背景 PNG/WebP（去背在你的第一道 AI 处理里完成）。
+| 文件名 | 用途 | 战场触发时机 |
+|---|---|---|
+| `<Id>.png` | idle 基础姿势（必备） | 默认 |
+| `<Id>.attack.png` | 攻击姿势 | 该角色出手时 |
+| `<Id>.hit.png` | 受击姿势 | 被命中/受伤时 |
+| `<Id>.downed.png` | 倒地姿势 | 倒地/死亡时（死亡额外灰度化） |
+
+**缺哪张回退哪张**：缺姿势 → 用 idle；缺 idle → 圆形占位。可以一张一张补。
+
+**⚠ 锚点对齐（重要）**：用 img2img 从 idle 生成姿势变体，**保持和 idle 相同的分辨率**。
+管线检测到同角色多姿势画布尺寸一致时，会用「联合包围盒」统一裁切——各姿势的缩放和
+位置完全一致，战斗切图不跳位。尺寸不一致会回退各自裁切并警告（切图会跳）。
+
+生成姿势时其他要求：和 idle **同朝向**（翻转交给表现层）、透明背景（或纯色背景 +
+`--flatten-bg`）、全身入画。
+
+## 战场背景
+
+`raw/bg/*.png` → `public/backgrounds/<名字>.webp`（1760×880 cover 裁切）+ `manifest.json`。
+管线会自动**压暗 28% + 去饱和 + 轻模糊**——生成原图时不必刻意做暗，但建议：构图中部
+留干净区域（角色站位区）、避免高对比的细碎纹理。
+
+游戏战场上方的「背景」下拉框读 manifest 自动列出全部背景，无需改代码。
+
+## 角色图输出
+
+`packages/client/public/fighters/<Id>[.<pose>].webp`（1024×1024，透明背景，居中留边）。
+
+处理流程：[可选纯色去背 `--flatten-bg[=容差]`] → alpha 包围盒（多姿势取联合）→
+等比缩放居中进 1024 正方形 → WebP。**不做复杂去背**——假设输入已是透明背景。
 
 ## 文件名 = archetype id
 
@@ -33,4 +63,5 @@ npm run art TungSahur    # 只处理指定角色
 | `BallerinaCappuccina.png` | Ballerina Cappuccina |
 | `ChimpanziniBananini.png` | Chimpanzini Bananini |
 
-> `raw/` 里的原图不进 git（见 `.gitignore`）；只有处理后的 `public/fighters/*.webp` 入库。
+> `raw/` 里的原图不进 git（见 `.gitignore`）；只有处理后的 `public/fighters/*.webp`、
+> `public/backgrounds/*` 入库。
