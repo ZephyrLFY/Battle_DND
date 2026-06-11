@@ -83,7 +83,7 @@ export function TeamCarousel({
                 key={id}
                 className={`carousel-item ${isCenter ? 'center' : ''} ${centerInTeam ? 'in-team' : ''}`}
                 style={{
-                  transform: `translateX(${off * 150}px) scale(${isCenter ? 1 : 0.6})`,
+                  transform: `translateX(${off * 220}px) scale(${isCenter ? 1 : 0.55})`,
                   opacity: visible ? (isCenter ? 1 : 0.4) : 0,
                   zIndex: 10 - Math.abs(off),
                   pointerEvents: visible && !isCenter ? 'auto' : 'none',

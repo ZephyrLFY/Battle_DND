@@ -4,9 +4,23 @@
  */
 import { abilityMod, type FighterRT } from '@italian-brainrot/shared';
 
-/** 角色 sprite 路径（public 下，缺图时战场回退圆形占位）。 */
-export function fighterSprite(archetypeId: string): string {
-  return `/fighters/${archetypeId}.webp`;
+/** 角色姿势（静态图伪动画）：idle 默认；其余按战斗事件切换，缺图回退 idle。 */
+export type Pose = 'idle' | 'attack' | 'hit' | 'downed';
+
+/** 战斗中的瞬时姿势表（useBattle 按回放事件维护）：`${team}:${id}` → 姿势。 */
+export type PoseMap = Record<string, 'attack' | 'hit'>;
+
+/** 突进表：`攻击者 key` → `目标 key`。单体攻击时攻击者滑到目标面前；AOE/全体/自身原地。 */
+export type LungeMap = Record<string, string>;
+
+/** 角色 sprite 路径（public 下，缺图时战场回退 idle → 圆形占位）。 */
+export function fighterSprite(archetypeId: string, pose: Pose = 'idle'): string {
+  return pose === 'idle' ? `/fighters/${archetypeId}.webp` : `/fighters/${archetypeId}.${pose}.webp`;
+}
+
+/** 战场背景图路径（public/backgrounds 下，由 manifest.json 列出可用项）。 */
+export function backgroundUrl(name: string): string {
+  return `/backgrounds/${name}.webp`;
 }
 
 /**

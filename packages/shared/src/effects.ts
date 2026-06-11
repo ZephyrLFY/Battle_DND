@@ -58,6 +58,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   // —— 防御姿态（self）——
   shield_block: (ctx) => {
     ctx.actor.acBonus += 3;
+    ctx.actor.acBonusTurns = 2; // 2 因本方回合开始先衰减 1 → 覆盖到自己下回合开始
     ctx.actor.thorns = 1;
     // 防御转资源：回 2 点能量（普攻才回 1，放弃这回合输出必须更划算）。
     const before = ctx.actor.energy;
@@ -122,8 +123,11 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   sig_bombombini_blast: (ctx) => {
     const t = first(ctx);
     if (!t) return;
+    // 平衡补丁：反噬从「当前 HP 1/4」改为「实际造成伤害的一半」——
+    // 旧版残血时反噬近乎免费（无下行风险）；新版炸得越狠自伤越重（含引信加伤）。
+    const before = t.hp;
     ctx.attack(t, { charged: true }); // 必中、伤害骰 4d6（复用蓄力档）
-    const recoil = Math.floor(ctx.actor.hp / 4);
+    const recoil = Math.floor(((before - t.hp) * 3) / 4); // 系数 3/4：1/2 时实测仍 91% 胜率（满血期比旧版便宜）
     if (recoil > 0) {
       ctx.actor.hp = Math.max(0, ctx.actor.hp - recoil);
       ctx.emit({ t: 'damage', to: ref(ctx.actor), roll: { spec: '反噬', rolls: [recoil], bonus: 0, total: recoil }, mitigated: 0, dealt: recoil, hpLeft: ctx.actor.hp });
@@ -140,9 +144,9 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 免疫了哈气降命中` });
       return;
     }
-    t.hitPenaltyTurns = 2; // 2 因目标自己回合开始会先衰减 1 → 实际覆盖其下一回合
+    t.hitPenaltyTurns = 3; // 平衡补丁：覆盖目标接下来 2 个回合（3 因目标回合开始先衰减 1）
     t.hitPenaltyAmt = 4;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `哈气！${t.name} 下回合命中 −4` });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `哈气！${t.name} 接下来 2 回合命中 −4` });
   },
   // 🌵🐘 Lirilì：时间静止。本回合用于发动，随后连续行动 2 次（净 +1 行动，对应「下回合行动2次」）。
   sig_lirili_timestop: (ctx) => {
@@ -163,8 +167,12 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       if (t.dead) continue;
       t.rallyTurns = 2; // 2 因本方回合开始先衰减 1
       t.acBonus += 1;
+      t.acBonusTurns = Math.max(t.acBonusTurns, 2);
+      // 平衡补丁：附带小幅伤害增益 +2（叠加在 rally 自带的 +2 上）
+      t.dmgBuffTurns = 2;
+      t.dmgBuffAmt = Math.max(t.dmgBuffAmt, 2);
     }
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '华尔兹号令！全体友方命中 +2、AC +1' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '华尔兹号令！全体友方命中 +2、AC +1、伤害提升' });
   },
   // 🐊 Bombardiro：地毯式轰炸。AOE 2d6；每目标体质豁免失败则震慑。
   sig_bombardiro_carpet: (ctx) => {
@@ -172,10 +180,11 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       if (t.dead || t.downed) continue;
       ctx.attack(t, { aoe: true });
       if (t.hp > 0 && !t.downed && !t.dead && !isControlImmune(t)) {
+        // 平衡补丁：群体眩晕豁免 DC 13→11（更易抵抗；单体控制技仍为 13）
         const save = roll(ctx.rng, '1d20', t.stats.conMod);
-        if (save.total < 13) {
+        if (save.total < 11) {
           t.stunned = 1;
-          ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被震慑（豁免 ${save.total}<13）` });
+          ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被震慑（豁免 ${save.total}<11）` });
         }
       }
     }
@@ -209,7 +218,8 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   // 🐪🧊 Frigo：冰封护盾。本回合 AC+3，接下来 2 回合免疫控制。
   sig_frigo_iceshield: (ctx) => {
     ctx.actor.acBonus += 3;
-    ctx.actor.controlImmuneTurns = 3; // 3 因本方回合开始先衰减 1 → 覆盖本回合 + 之后
+    ctx.actor.acBonusTurns = 4; // 平衡补丁二轮：AC+3 持续 3 回合（4 因本方回合开始先衰减 1）
+    ctx.actor.controlImmuneTurns = 4; // 同步 3 回合免控
     ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '冰封护盾！AC +3，免疫控制' });
   },
   // 🦈👟 Tralalero：疾游连斩。2 次攻击，每次命中后本回合 AC +1。
@@ -224,7 +234,10 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       if (t.hp < before) hits++;
     }
     // 两次都命中才 AC+1（原来每次各+1，自保过强）
-    if (hits >= 2) ctx.actor.acBonus += 1;
+    if (hits >= 2) {
+      ctx.actor.acBonus += 1;
+      ctx.actor.acBonusTurns = Math.max(ctx.actor.acBonusTurns, 2);
+    }
   },
   // 🍌🐒 Chimpanzini：狂猿连击。攻击次数 = 当前能量数（≥1），打完清空能量。
   sig_chimpanzini_frenzy: (ctx) => {
@@ -235,7 +248,15 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `狂猿连击！连打 ${hits} 次` });
     for (let i = 0; i < hits; i++) {
       if (t.hp <= 0 || t.downed || t.dead) break;
-      ctx.attack(t);
+      const before = t.hp;
+      ctx.attack(t, { extraHitBonus: 2 }); // 平衡补丁：狂暴更准（每击 +2 命中），提高每点能量的转化率
+      // 平衡补丁：渐入佳境——第 i 击命中后追加 i−1 点 flat 伤害（越打越疯；3 能量 +3、5 能量 +10）。
+      // flat 伤害不走命中/减伤（与被动 dealFlatDamage 同约定），给它头部角色同款的 flat 词条。
+      if (i > 0 && t.hp < before && t.hp > 0 && !t.dead) {
+        const dealt = Math.min(i, t.hp);
+        t.hp -= dealt;
+        ctx.emit({ t: 'damage', to: { team: t.team, id: t.id }, roll: { spec: '狂暴', rolls: [dealt], bonus: 0, total: dealt }, mitigated: 0, dealt, hpLeft: t.hp });
+      }
     }
   },
 };

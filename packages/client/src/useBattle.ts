@@ -30,6 +30,7 @@ import {
 } from '@italian-brainrot/shared';
 import { eventToLines } from './battleLog.js';
 import { cloneView, applyEventToView } from './playback.js';
+import type { PoseMap, LungeMap } from './presentation.js';
 
 /** 回放速度：每个事件之间的间隔（ms）。instant=0 → 同步清空（等价旧无动画）。 */
 export type PlaybackSpeed = '1x' | '2x' | 'instant';
@@ -46,6 +47,10 @@ export interface PendingTarget {
 export interface UseBattle {
   /** 显示态（回放当前帧）；BattleStage 渲染它。 */
   state: BattleState | null;
+  /** 瞬时姿势表（按回放事件维护）：出手者→attack、被命中者→hit；新回合清空。 */
+  poses: PoseMap;
+  /** 突进表：单体攻击时 攻击者→目标（战场把攻击者画到目标面前）；新回合清空。 */
+  lunges: LungeMap;
   log: string[];
   myTurn: boolean;
   actions: ActionOption[];
@@ -83,6 +88,11 @@ export function useBattle(): UseBattle {
   // 事件回放队列 + 当前折叠中的显示态
   const queueRef = useRef<BattleEvent[]>([]);
   const viewRef = useRef<BattleState | null>(null);
+  // 瞬时姿势表（attack/hit）+ 突进表（单体攻击者→目标），随事件更新、新回合清空
+  const posesRef = useRef<PoseMap>({});
+  const [poses, setPoses] = useState<PoseMap>({});
+  const lungesRef = useRef<LungeMap>({});
+  const [lunges, setLunges] = useState<LungeMap>({});
   const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -93,15 +103,59 @@ export function useBattle(): UseBattle {
     aiTimer.current = null;
   }, []);
 
-  /** 折叠一个事件到显示态 + 追加日志。 */
+  /** 按事件更新瞬时姿势表 + 突进表（静态图伪动画的驱动源）。返回是否有变化。 */
+  const updateFx = useCallback((ev: BattleEvent): boolean => {
+    const m = posesRef.current;
+    const lg = lungesRef.current;
+    const key = (r: FighterRef) => `${r.team}:${r.id}`;
+    switch (ev.t) {
+      case 'turn': {
+        // 新回合：清空上一回合的瞬时姿势与突进
+        if (Object.keys(m).length === 0 && Object.keys(lg).length === 0) return false;
+        posesRef.current = {};
+        lungesRef.current = {};
+        return true;
+      }
+      case 'action': {
+        m[key(ev.who)] = 'attack';
+        // 单体指向性动作 → 突进到目标面前；AOE/全体/自身 → 原地
+        const a = ev.action;
+        if (a.kind === 'attack') {
+          lg[key(ev.who)] = key(a.target);
+        } else if (skillDef(a.skill).targetType === 'one_enemy' && a.targets[0]) {
+          lg[key(ev.who)] = key(a.targets[0]);
+        }
+        return true;
+      }
+      case 'hit':
+        if (!ev.hit) return false;
+        m[key(ev.to)] = 'hit';
+        return true;
+      case 'damage':
+        m[key(ev.to)] = 'hit';
+        return true;
+      case 'revive':
+        if (!(key(ev.who) in m)) return false;
+        delete m[key(ev.who)];
+        return true;
+      default:
+        return false;
+    }
+  }, []);
+
+  /** 折叠一个事件到显示态 + 更新姿势/突进 + 追加日志。 */
   const foldOne = useCallback((ev: BattleEvent) => {
     if (viewRef.current) {
       applyEventToView(viewRef.current, ev);
       setView(cloneView(viewRef.current)); // 新引用触发重渲染
     }
+    if (updateFx(ev)) {
+      setPoses({ ...posesRef.current });
+      setLunges({ ...lungesRef.current });
+    }
     const lines = eventToLines(ev);
     if (lines.length) setLog((prev) => [...prev, ...lines]);
-  }, []);
+  }, [updateFx]);
 
   /**
    * 回放清空后，把显示态的「当前行动者」对齐到逻辑态。
@@ -138,6 +192,10 @@ export function useBattle(): UseBattle {
       queueRef.current = [];
       if (viewRef.current) setView(cloneView(viewRef.current));
       if (allLines.length) setLog((prev) => [...prev, ...allLines]);
+      posesRef.current = {}; // 瞬间档不播姿势/突进
+      lungesRef.current = {};
+      setPoses({});
+      setLunges({});
       syncViewToLogic();
       setPlaying(false);
       return;
@@ -146,6 +204,10 @@ export function useBattle(): UseBattle {
       const ev = queueRef.current.shift();
       if (!ev) {
         tickTimer.current = null; // 清空句柄：否则 enqueue 的 `!tickTimer.current` 守卫永远拦截后续回放
+        posesRef.current = {}; // 回放播完：全员归位 idle、突进归位
+        lungesRef.current = {};
+        setPoses({});
+        setLunges({});
         syncViewToLogic(); // 对齐先攻条到下一个该行动的人
         setPlaying(false);
         return;
@@ -176,6 +238,10 @@ export function useBattle(): UseBattle {
       const { state: s0, events } = createBattle(teamA, teamB, seed);
       logicRef.current = s0;
       viewRef.current = cloneView(s0);
+      posesRef.current = {};
+      lungesRef.current = {};
+      setPoses({});
+      setLunges({});
       setLog([]);
       setView(cloneView(s0));
       setPlaying(false);
@@ -286,6 +352,8 @@ export function useBattle(): UseBattle {
 
   return {
     state: view,
+    poses,
+    lunges,
     log,
     myTurn,
     actions,

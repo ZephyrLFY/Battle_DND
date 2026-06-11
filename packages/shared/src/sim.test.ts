@@ -9,6 +9,7 @@ import {
   signatureRoster,
   archetypeDuel,
   archetypeTeamContribution,
+  archetypeDraftValue,
 } from './sim.js';
 import { abilitiesOf } from './combatant.js';
 import { spentPoints, availablePoints } from './leveling.js';
@@ -97,5 +98,15 @@ describe('角色平衡 sim（纯签名+被动）', () => {
       expect(r.winRate).toBeGreaterThanOrEqual(0);
       expect(r.winRate).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('archetypeDraftValue(3v3 随机组队) 输出 12 行、胜率合法、确定性、队伍含被测角色且不重复', () => {
+    const rows = archetypeDraftValue(8, 4, 4);
+    expect(rows).toHaveLength(ARCHETYPE_IDS.length);
+    for (const r of rows) {
+      expect(r.winRate).toBeGreaterThanOrEqual(0);
+      expect(r.winRate).toBeLessThanOrEqual(1);
+    }
+    expect(archetypeDraftValue(8, 4, 4)).toEqual(rows); // 确定性
   });
 });

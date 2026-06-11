@@ -46,6 +46,31 @@ function firstEnemyRef(state: BattleState, team: 'a' | 'b'): FighterRef {
   return { team: enemy.team, id: enemy.id };
 }
 
+describe('闪避回能', () => {
+  it('敌方攻击落空时，受击者 +1 能量（封顶 maxEnergy）', () => {
+    // 给目标拉满 AC 让攻击几乎必 miss（自然 20 仍命中 → 换种子直到找到 miss 局）
+    for (let seed = 1; seed < 100; seed++) {
+      const { state } = battle1v1(mk('TungSahur', 10), mk('TralaleroTralala', 10), seed);
+      const cur = currentFighter(state)!;
+      if (cur.team !== 'a') continue; // 要 a 先手攻击 b
+      const target = find(state, { team: 'b', id: 'TralaleroTralala' })!;
+      target.stats.ac = 99; // 必 miss（除自然 20）
+      const before = target.energy;
+      const r = applyAction(state, { kind: 'attack', target: { team: 'b', id: target.id } });
+      const hitEv = r.events.find((e) => e.t === 'hit');
+      if (hitEv?.t === 'hit' && !hitEv.hit) {
+        const after = find(r.state, { team: 'b', id: 'TralaleroTralala' })!;
+        expect(after.energy).toBe(Math.min(after.stats.maxEnergy, before + 1));
+        // 且有对应 energy 事件（delta +1、无 spent）
+        const enEv = r.events.find((e) => e.t === 'energy' && e.who.id === 'TralaleroTralala');
+        expect(enEv && enEv.t === 'energy' && enEv.delta === 1 && !enEv.spent).toBe(true);
+        return;
+      }
+    }
+    throw new Error('100 个种子里没找到 miss 局（不应发生）');
+  });
+});
+
 describe('createBattle — 初始化', () => {
   it('start 事件含先攻明细，order 覆盖双方全员', () => {
     const { state, events } = battle1v1(newCombatant('TrippiTroppi'), newCombatant('TralaleroTralala'), 1);
@@ -133,9 +158,10 @@ describe('能量系统（普攻攒能、技能耗能）', () => {
     let acts = legalActions(st);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'brave_strike')).toBe(false);
     expect(acts.some((x) => x.kind === 'skill' && x.skill === 'feint')).toBe(true);
-    // 普攻命中才攒能量：反复打直到一次命中，能量应升到 1（其余角色普攻推进回合）
+    // 普攻命中才攒能量：反复打直到一次命中，能量至少升到 1
+    // （≥ 而非 =：过程中 b 的反击若 miss，a 还会因「闪避回能」额外 +1）
     st = attackUntilHit(st, 'a', 'TrippiTroppi', 'b', 'TrippiTroppi');
-    expect(st.teams.a[0]!.energy).toBe(1);
+    expect(st.teams.a[0]!.energy).toBeGreaterThanOrEqual(1);
   });
 
   it('攒够能量后可放技能，放完能量扣除', () => {

@@ -118,7 +118,7 @@ function fighter(state: BattleState, team: 'a' | 'b', archetypeId: string): Figh
 }
 
 describe('CA↔BC 联动「咖啡与舞伴」', () => {
-  it('modifyStats：BC 存活 ×1.1、BC 阵亡 ×1.3、无 BC 不变', () => {
+  it('modifyStats：BC 存活 ×1.3、BC 阵亡 ×1.5、无 BC 不变', () => {
     const { state } = createBattle(
       [mk('CappuccinoAssassino', 10), mk('BallerinaCappuccina', 10)],
       [mk('TrippiTroppi', 10)],
@@ -127,13 +127,13 @@ describe('CA↔BC 联动「咖啡与舞伴」', () => {
     const ca = fighter(state, 'a', 'CappuccinoAssassino');
     const p = passiveOf('CappuccinoAssassino')!;
     const base = ca.stats;
-    // BC 存活 → ×1.1
+    // BC 存活 → ×1.3
     const alive = p.modifyStats!(base, pctx(state, ca));
-    expect(alive.dmgBonus).toBe(Math.round(base.dmgBonus * 1.1));
-    // BC 阵亡 → ×1.3
+    expect(alive.dmgBonus).toBe(Math.round(base.dmgBonus * 1.3));
+    // BC 阵亡 → ×1.5
     fighter(state, 'a', 'BallerinaCappuccina').dead = true;
     const dead = p.modifyStats!(base, pctx(state, ca));
-    expect(dead.dmgBonus).toBe(Math.round(base.dmgBonus * 1.3));
+    expect(dead.dmgBonus).toBe(Math.round(base.dmgBonus * 1.5));
     expect(dead.toHit).toBeGreaterThanOrEqual(alive.toHit);
   });
 
@@ -158,7 +158,7 @@ describe('CA↔BC 联动「咖啡与舞伴」', () => {
 });
 
 describe('Trippi 九命怪猫', () => {
-  it('onWouldGoDown 首次拦截：1HP 存活 + 清负面；第二次放行', () => {
+  it('onWouldGoDown 首次拦截：25% maxHp 存活 + 清负面；第二次放行', () => {
     const { state } = createBattle([mk('TrippiTroppi', 10)], [mk('TungSahur', 10)], 1);
     const tt = fighter(state, 'a', 'TrippiTroppi');
     const p = passiveOf('TrippiTroppi')!;
@@ -166,7 +166,7 @@ describe('Trippi 九命怪猫', () => {
     tt.stunned = 2;
     const vetoed = p.onWouldGoDown!(pctx(state, tt));
     expect(vetoed).toBe(true);
-    expect(tt.hp).toBe(1);
+    expect(tt.hp).toBe(Math.max(1, Math.floor(tt.stats.maxHp * 0.25))); // 平衡补丁：1 HP → 25% maxHp
     expect(tt.stunned).toBe(0);
     // 第二次：已用过 → 不拦截
     tt.hp = 0;
@@ -234,11 +234,11 @@ describe('passiveState 访问器', () => {
 });
 
 describe('Phase 2 被动', () => {
-  it('Bombardiro 装甲蒙皮：受伤 −2（modifyIncomingDamage）', () => {
+  it('Bombardiro 装甲蒙皮：受伤 −1（modifyIncomingDamage，平衡补丁 2→1）', () => {
     const { state } = createBattle([mk('TungSahur', 10)], [mk('BombardiroCrocodilo', 10)], 1);
     const bc = fighter(state, 'b', 'BombardiroCrocodilo');
     const p = passiveOf('BombardiroCrocodilo')!;
-    expect(p.modifyIncomingDamage!(pctx(state, bc), fighter(state, 'a', 'TungSahur'), 10)).toBe(8);
+    expect(p.modifyIncomingDamage!(pctx(state, bc), fighter(state, 'a', 'TungSahur'), 10)).toBe(9);
     expect(p.modifyIncomingDamage!(pctx(state, bc), fighter(state, 'a', 'TungSahur'), 1)).toBe(0);
   });
 

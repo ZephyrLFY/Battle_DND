@@ -4,6 +4,7 @@
  * 纯函数（可单测、可被 CLI 复用）。双方都用贪心 AI（更接近"会玩的玩家"的强度），
  * 这样胜率反映 build 本身的强弱，而非 AI 失误。
  */
+import { Rng } from './rng.js';
 import { createBattle, applyAction, currentFighter, isOver } from './battle.js';
 import { chooseActionGreedy } from './ai.js';
 import { newCombatant, abilitiesOf, type Combatant, type AbilityKey } from './combatant.js';
@@ -21,8 +22,34 @@ export interface MatchResult {
   aWinRate: number;
 }
 
-/** 跑 N 场 a vs b（双方贪心），返回统计。确定性：同入参恒等。 */
-export function runMatch(teamA: Combatant[], teamB: Combatant[], games: number): MatchResult {
+/**
+ * 技能使用率统计（AI 健康度仪表盘）：archetypeId → 动作键('attack'|skillId) → 次数。
+ * 任何角色的签名使用率 ≈ 0 都说明其胜率数据不反映 kit 强度（AI 不会用 ≠ 技能弱）。
+ */
+export type UsageTally = Record<string, Record<string, number>>;
+
+function tallyAction(tally: UsageTally, archetypeId: string, action: { kind: string; skill?: string }): void {
+  const key = action.kind === 'attack' ? 'attack' : (action as { skill: string }).skill;
+  const row = (tally[archetypeId] ??= {});
+  row[key] = (row[key] ?? 0) + 1;
+}
+
+/** UsageTally → 可读报表（每角色的动作分布，签名技能排前）。 */
+export function formatUsage(tally: UsageTally, title = '技能使用率'): string {
+  const lines: string[] = [`=== ${title}（AI 健康度：签名使用率≈0 ⇒ 该角色胜率数据失真）===`];
+  for (const id of Object.keys(tally).sort()) {
+    const row = tally[id]!;
+    const total = Object.values(row).reduce((a, b) => a + b, 0);
+    const parts = Object.entries(row)
+      .sort(([a], [b]) => Number(b.startsWith('sig_')) - Number(a.startsWith('sig_')) || a.localeCompare(b))
+      .map(([k, n]) => `${k} ${((100 * n) / total).toFixed(0)}%`);
+    lines.push(`  ${id.padEnd(22)} ${parts.join(' | ')}  (n=${total})`);
+  }
+  return lines.join('\n');
+}
+
+/** 跑 N 场 a vs b（双方贪心），返回统计。确定性：同入参恒等。可选 tally 收集动作分布。 */
+export function runMatch(teamA: Combatant[], teamB: Combatant[], games: number, tally?: UsageTally): MatchResult {
   let aWins = 0;
   let bWins = 0;
   let draws = 0;
@@ -31,10 +58,14 @@ export function runMatch(teamA: Combatant[], teamB: Combatant[], games: number):
     const seed = i * 2654435761 + 1;
     let { state } = createBattle(teamA, teamB, seed);
     let guard = 0;
-    while (!isOver(state) && guard++ < 5000) {
+    // guard 800：正常对局 <100 回合；超过的实质是双回血坦克死局（计平局）。
+    // 5000 在推演 AI（每决策 ~30 次 applyAction）下会让死局吃掉全部模拟时间。
+    while (!isOver(state) && guard++ < 800) {
       const cur = currentFighter(state)!;
       const aiSeed = seed * 31 + guard;
-      state = applyAction(state, chooseActionGreedy(state, aiSeed)).state;
+      const action = chooseActionGreedy(state, aiSeed);
+      if (tally && cur && !cur.downed && cur.stunned <= 0) tallyAction(tally, cur.archetypeId, action);
+      state = applyAction(state, action).state;
     }
     turnsTotal += guard;
     if (state.winner === 'a') aWins++;
@@ -124,14 +155,14 @@ export interface RoundRobinRow {
   overall: number;
 }
 
-export function roundRobin(level: number, specs: BuildSpec[], gamesPer: number): RoundRobinRow[] {
+export function roundRobin(level: number, specs: BuildSpec[], gamesPer: number, tally?: UsageTally): RoundRobinRow[] {
   const teams = specs.map((s) => ({ spec: s, team: buildTeam(level, s) }));
   const rows: RoundRobinRow[] = [];
   for (const a of teams) {
     const vs: Record<string, number> = {};
     let sum = 0;
     for (const b of teams) {
-      const r = runMatch(a.team, b.team, gamesPer);
+      const r = runMatch(a.team, b.team, gamesPer, tally);
       vs[b.spec.name] = round2(r.aWinRate);
       sum += r.aWinRate;
     }
@@ -184,7 +215,7 @@ export interface ArchetypeRow {
 }
 
 /** 内部：N 人对 N 人的角色循环赛（teamSize=1 → 1v1 单体；=3 → 同名 3 人队）。 */
-function archetypeRoundRobinN(level: number, gamesPer: number, teamSize: number): ArchetypeRow[] {
+function archetypeRoundRobinN(level: number, gamesPer: number, teamSize: number, tally?: UsageTally): ArchetypeRow[] {
   const roster = signatureRoster(level);
   const mkTeam = (c: Combatant) => Array.from({ length: teamSize }, () => c);
   const rows: ArchetypeRow[] = [];
@@ -192,7 +223,7 @@ function archetypeRoundRobinN(level: number, gamesPer: number, teamSize: number)
     const vs: Record<string, number> = {};
     let sum = 0;
     for (const b of roster) {
-      const r = runMatch(mkTeam(a.combatant), mkTeam(b.combatant), gamesPer);
+      const r = runMatch(mkTeam(a.combatant), mkTeam(b.combatant), gamesPer, tally);
       vs[b.id] = round2(r.aWinRate);
       sum += r.aWinRate;
     }
@@ -202,8 +233,8 @@ function archetypeRoundRobinN(level: number, gamesPer: number, teamSize: number)
 }
 
 /** 1v1 单角色对轰：隔离单体强度。 */
-export function archetypeDuel(level: number, gamesPer: number): ArchetypeRow[] {
-  return archetypeRoundRobinN(level, gamesPer, 1);
+export function archetypeDuel(level: number, gamesPer: number, tally?: UsageTally): ArchetypeRow[] {
+  return archetypeRoundRobinN(level, gamesPer, 1, tally);
 }
 
 /**
@@ -220,7 +251,7 @@ export interface ContribRow {
   winRate: number;
 }
 
-export function archetypeTeamContribution(level: number, gamesPer: number): ContribRow[] {
+export function archetypeTeamContribution(level: number, gamesPer: number, tally?: UsageTally): ContribRow[] {
   const sig = (id: string) => signatureCombatant(id, level);
   const baseline = BASELINE_TRIO.map(sig);
   const rows: ContribRow[] = [];
@@ -231,11 +262,90 @@ export function archetypeTeamContribution(level: number, gamesPer: number): Cont
     let sum = 0;
     for (let slot = 0; slot < baseline.length; slot++) {
       const team = baseline.map((c, i) => (i === slot ? me : c));
-      sum += runMatch(team, baseline, gamesPer).aWinRate;
+      sum += runMatch(team, baseline, gamesPer, tally).aWinRate;
     }
     rows.push({ id, winRate: round2(sum / baseline.length) });
   }
   return rows;
+}
+
+/**
+ * 3v3 随机组队「选秀价值」（替代固定基准队替换位指标）：
+ * 对每个角色采样 N 支**包含它的随机三人队**，对阵随机敌方三人队，取平均胜率。
+ *
+ * 为什么换：固定基准队指标的分数被「被换下的人有多强 + 与留下两人的配合」主导
+ * （基准队成员自带主场优势，T1 角色被换下时全员分数塌方），不反映角色自身的团队价值。
+ * 随机采样消除基准偏置，且联动（CA+BC 同队）会自然出现在样本里。
+ *
+ * 确定性：组队采样用固定种子的 Rng；同入参恒等。
+ * 公平性：所有被测角色共用同一批敌方队伍（配对比较，降方差）。
+ */
+export function archetypeDraftValue(
+  level: number,
+  teamsPer: number,
+  gamesPer: number,
+  tally?: UsageTally,
+): ContribRow[] {
+  const sig = (id: string) => signatureCombatant(id, level);
+  const rng = new Rng(0xd2af7);
+  /** 从全角色池抽 size 个不同 archetype（可要求包含 include）。 */
+  const sampleTeam = (size: number, include?: string): string[] => {
+    const pool = include ? ARCHETYPE_IDS.filter((x) => x !== include) : [...ARCHETYPE_IDS];
+    // Fisher–Yates 局部洗牌取前 k
+    for (let i = 0; i < size; i++) {
+      const j = rng.int(i, pool.length - 1);
+      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+    }
+    const picked = pool.slice(0, include ? size - 1 : size);
+    return include ? [include, ...picked] : picked;
+  };
+  // 共用敌方队伍组（所有被测角色面对同一批对手）
+  const enemyTeams = Array.from({ length: teamsPer }, () => sampleTeam(3).map(sig));
+  const rows: ContribRow[] = [];
+  for (const id of ARCHETYPE_IDS) {
+    let sum = 0;
+    for (let s = 0; s < teamsPer; s++) {
+      const myTeam = sampleTeam(3, id).map(sig);
+      sum += runMatch(myTeam, enemyTeams[s]!, gamesPer, tally).aWinRate;
+    }
+    rows.push({ id, winRate: round2(sum / teamsPer) });
+  }
+  return rows;
+}
+
+/**
+ * 双人组合专项：强制 idA + idB 同队（第三人随机），对阵与 archetypeDraftValue
+ * **同一批**随机敌队（同种子采样）。与两人各自的选秀价值对比即可量化联动收益：
+ *   synergy ≈ pairValue − max(draft(A), draft(B))
+ * 用于评判 CA↔BC 这类依赖同队的被动（随机组队里两人同队概率仅 ~18%，会被稀释）。
+ */
+export function archetypePairValue(
+  level: number,
+  idA: string,
+  idB: string,
+  teamsPer: number,
+  gamesPer: number,
+  tally?: UsageTally,
+): ContribRow {
+  const sig = (id: string) => signatureCombatant(id, level);
+  const rng = new Rng(0xd2af7); // 与 archetypeDraftValue 同种子 → 敌队序列一致，可比
+  const sampleTrio = (exclude: string[]): string[] => {
+    const pool = ARCHETYPE_IDS.filter((x) => !exclude.includes(x));
+    for (let i = 0; i < 3; i++) {
+      const j = rng.int(i, pool.length - 1);
+      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+    }
+    return pool.slice(0, 3);
+  };
+  // 敌队：与 draftValue 相同的采样方式（全池随机三人）
+  const enemyTeams = Array.from({ length: teamsPer }, () => sampleTrio([]).map(sig));
+  let sum = 0;
+  for (let s = 0; s < teamsPer; s++) {
+    const third = sampleTrio([idA, idB])[0]!;
+    const myTeam = [sig(idA), sig(idB), sig(third)];
+    sum += runMatch(myTeam, enemyTeams[s]!, gamesPer, tally).aWinRate;
+  }
+  return { id: `${idA}+${idB}`, winRate: round2(sum / teamsPer) };
 }
 
 /** ArchetypeRow（1v1）→ 按 overall 排序的可读排名表。 */
@@ -253,7 +363,7 @@ export function formatContribRanking(rows: ContribRow[], title: string): string 
   const lines = sorted.map(
     (r, i) => `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(22)} ${(r.winRate * 100).toFixed(0)}%`,
   );
-  return [`=== ${title}（替换基准队一位，对原基准队胜率）===`, ...lines].join('\n');
+  return [`=== ${title} ===`, ...lines].join('\n');
 }
 
 /** 把循环赛结果格式化成可读表格文本。 */
