@@ -6,8 +6,8 @@ import { signatureOwner } from './roster.js';
 const COMMON_SKILL_IDS = ALL_SKILL_IDS.filter((id) => !signatureOwner(id));
 
 describe('技能池静态定义', () => {
-  it('通用技能恰好 11 个（7 基础 + 4 团队技能）', () => {
-    expect(COMMON_SKILL_IDS).toHaveLength(11);
+  it('通用技能恰好 10 个（6 基础 + 4 团队技能；眩晕突袭已删）', () => {
+    expect(COMMON_SKILL_IDS).toHaveLength(10);
   });
 
   it('每个技能 id 与 key 一致、字段完整，cost 0~3，unlockLevel≥1', () => {
@@ -21,12 +21,12 @@ describe('技能池静态定义', () => {
     }
   });
 
-  it('通用技能分阶：2 个 cost0 / 2 低阶(cost1) / 5 中阶(cost2) / 2 高阶(cost3)', () => {
+  it('通用技能分阶：2 个 cost0 / 2 低阶(cost1) / 5 中阶(cost2) / 1 高阶(cost3)', () => {
     const byCost = (c: number) => COMMON_SKILL_IDS.filter((id) => SKILLS[id].cost === c);
     expect(byCost(0)).toHaveLength(2); // 佯攻/精准
     expect(byCost(1)).toHaveLength(2); // 英勇打击/护盾格挡
-    expect(byCost(2)).toHaveLength(5); // 眩晕/疾风/战吼/烈焰/治疗
-    expect(byCost(3)).toHaveLength(2); // 蓄力/复活
+    expect(byCost(2)).toHaveLength(5); // 疾风/战吼/烈焰/治疗/蓄力
+    expect(byCost(3)).toHaveLength(1); // 复活
     // cost0 技能都是 Lv1 解锁
     for (const id of byCost(0)) expect(SKILLS[id].unlockLevel).toBe(1);
   });

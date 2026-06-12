@@ -4,7 +4,6 @@
  */
 import {
   ABILITY_KEYS,
-  ABILITY_LABEL,
   SKILLS,
   MAX_EQUIPPED_SKILLS,
   MAX_ABILITY,
@@ -25,6 +24,7 @@ import {
   type AbilityKey,
   type SkillId,
 } from '@italian-brainrot/shared';
+import { useI18n, skillName, skillDesc, abilityLabel, learnReasonText, type Lang } from './i18n.js';
 
 export function BuildEditor({
   poke,
@@ -33,6 +33,7 @@ export function BuildEditor({
   poke: Combatant;
   onChange: (p: Combatant) => void;
 }) {
+  const { lang, t } = useI18n();
   const stats = statsOf(poke);
   const abil = abilitiesOf(poke);
   const pts = availablePoints(poke);
@@ -51,7 +52,7 @@ export function BuildEditor({
         <div className="build-row">
           <span className="build-name">{archetypeName(poke.archetypeId)}</span>
           <label className="lvl">
-            等级 {poke.level}
+            {t.level} {poke.level}
             <input
               type="range"
               min={1}
@@ -62,7 +63,7 @@ export function BuildEditor({
           </label>
         </div>
 
-        <div className="col-title">属性加点</div>
+        <div className="col-title">{t.allocTitle}</div>
         <div className="abilities">
           {ABILITY_KEYS.map((k) => (
             <AbilityRow
@@ -78,42 +79,42 @@ export function BuildEditor({
         </div>
 
         <div className="build-controls">
-          <span className={`pts ${pts > 0 ? 'has' : ''}`}>剩余点数：{pts}</span>
-          <button onClick={() => onChange(respec(poke))}>洗点</button>
+          <span className={`pts ${pts > 0 ? 'has' : ''}`}>{t.ptsLeft(pts)}</span>
+          <button onClick={() => onChange(respec(poke))}>{t.respec}</button>
         </div>
 
         <div className="derived">
           <span>HP {stats.maxHp}</span>
           <span>AC {stats.ac}</span>
-          <span>命中 +{stats.toHit}</span>
-          <span>伤害 +{stats.dmgBonus}</span>
-          <span>先攻 {fmt(stats.initiative)}</span>
-          <span>⚡ 能量上限 {stats.maxEnergy}</span>
-          {stats.lifestealRate > 0 && <span>🩸 吸血 {Math.round(stats.lifestealRate * 100)}%</span>}
+          <span>{t.statHit} +{stats.toHit}</span>
+          <span>{t.statDmg} +{stats.dmgBonus}</span>
+          <span>{t.statInit} {fmt(stats.initiative)}</span>
+          <span>{t.statEnergyCap} {stats.maxEnergy}</span>
+          {stats.lifestealRate > 0 && <span>{t.statLifesteal} {Math.round(stats.lifestealRate * 100)}%</span>}
         </div>
 
         {/* 已学技能放左列底部：固定 MAX_EQUIPPED_SKILLS 个槽位，高度恒定，不随增删抖动 */}
         <div className="col-title">
-          已学技能（{poke.skills.length} / {MAX_EQUIPPED_SKILLS}）
+          {t.learnedTitle(poke.skills.length, MAX_EQUIPPED_SKILLS)}
         </div>
         <div className="equipped-slots">
           {Array.from({ length: MAX_EQUIPPED_SKILLS }).map((_, i) => {
             const id = poke.skills[i];
-            if (!id) return <div key={i} className="eq-slot empty">空技能位</div>;
+            if (!id) return <div key={i} className="eq-slot empty">{t.emptySlot}</div>;
             const signature = isOwnSignature(poke, id);
             return (
               <div key={i} className={`eq-slot filled ${signature ? 'signature' : ''}`}>
                 <div className="eq-row">
-                  <SkillHeader id={id} />
+                  <SkillHeader id={id} lang={lang} costFree={t.costFree} />
                   {signature ? (
-                    <span className="sig-tag">专属</span>
+                    <span className="sig-tag">{t.sigTag}</span>
                   ) : (
                     <button className="forget-btn" onClick={() => onChange(forgetSkill(poke, id))}>
-                      ✕ 卸下
+                      {t.unequip}
                     </button>
                   )}
                 </div>
-                <div className="eq-desc">{SKILLS[id].desc}</div>
+                <div className="eq-desc">{skillDesc(id, lang)}</div>
               </div>
             );
           })}
@@ -124,16 +125,16 @@ export function BuildEditor({
       <div className="build-col build-col-right">
         <div className="skills">
           <div className="skills-title">
-            技能池（按解锁等级排序）
-            {poke.skills.length >= MAX_EQUIPPED_SKILLS && <span className="bar-full"> · 技能栏已满</span>}
+            {t.poolTitle}
+            {poke.skills.length >= MAX_EQUIPPED_SKILLS && <span className="bar-full">{t.barFull}</span>}
           </div>
           {learnable.length === 0 ? (
-            <div className="hint">已无可学技能</div>
+            <div className="hint">{t.noLearnable}</div>
           ) : (
             <div className="skill-list">
               {learnable.map((id) => {
                 const ok = canLearn(poke, id);
-                const reason = learnBlockReason(poke, id);
+                const reason = lang === 'zh' ? learnBlockReason(poke, id) : learnReasonText(poke, id, lang);
                 // 是否有「解锁门槛」（等级 or 签名专属）。只有有门槛的技能才显示解锁状态行，
                 // Lv1 普通技能不显示（避免冗余「可学习」，也让它们矮一点）。
                 const levelGate = SKILLS[id].unlockLevel > 1;
@@ -147,12 +148,12 @@ export function BuildEditor({
                     onClick={() => ok && onChange(learnSkill(poke, id))}
                     disabled={!ok}
                   >
-                    <SkillHeader id={id} prefix={!gated ? '＋ ' : gateMet ? '🔓 ' : '🔒 '} />
-                    <div className="skill-desc">{SKILLS[id].desc}</div>
+                    <SkillHeader id={id} lang={lang} costFree={t.costFree} prefix={!gated ? '＋ ' : gateMet ? '🔓 ' : '🔒 '} />
+                    <div className="skill-desc">{skillDesc(id, lang)}</div>
                     {/* 有门槛的技能：那行始终在，升级前显示原因+🔒，达成后原地替换为「已解锁」+🔓 */}
                     {gated && (
                       <div className={`skill-status ${gateMet ? 'ok' : 'locked'}`}>
-                        {gateMet ? '已解锁' : reason}
+                        {gateMet ? t.unlocked : reason}
                       </div>
                     )}
                   </button>
@@ -166,25 +167,18 @@ export function BuildEditor({
   );
 }
 
-const COST_LABEL: Record<number, string> = {
-  0: '0 能量',
-  1: '⚡×1',
-  2: '⚡×2',
-  3: '⚡×3',
-};
-
 /** 技能名 + 消耗徽章 + 解锁等级。 */
-function SkillHeader({ id, prefix = '' }: { id: SkillId; prefix?: string }) {
+function SkillHeader({ id, lang, costFree, prefix = '' }: { id: SkillId; lang: Lang; costFree: string; prefix?: string }) {
   const def = SKILLS[id];
   return (
     <div className="skill-head">
       <span className="skill-name">
         {prefix}
-        {def.name}
+        {skillName(id, lang)}
         {def.unlockLevel > 1 && <small className="unlock"> Lv{def.unlockLevel}</small>}
       </span>
       <span className={`cost-badge ${def.cost === 0 ? 'free' : 'spell'}`}>
-        {COST_LABEL[def.cost]}
+        {def.cost === 0 ? costFree : `⚡×${def.cost}`}
       </span>
     </div>
   );
@@ -205,10 +199,11 @@ function AbilityRow({
   onAdd: () => void;
   onSub: () => void;
 }) {
+  const { lang } = useI18n();
   const mod = Math.floor((value - 10) / 2);
   return (
     <div className="ability">
-      <span className="ab-name">{ABILITY_LABEL[akey]}</span>
+      <span className="ab-name">{abilityLabel(akey, lang)}</span>
       <button className="ab-btn" onClick={onSub} disabled={!canSub}>
         −
       </button>

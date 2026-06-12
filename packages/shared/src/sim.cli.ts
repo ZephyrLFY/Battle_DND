@@ -3,6 +3,7 @@
  *   npx tsx packages/shared/src/sim.cli.ts [level] [gamesPer]            —— 标准属性向 build 循环赛
  *   npx tsx packages/shared/src/sim.cli.ts balance [level] [gamesPer]    —— 12 角色平衡：1v1 + 3v3
  *   npx tsx packages/shared/src/sim.cli.ts pair <idA> <idB> [level] [teams] —— 双人组合联动专项
+ *   npx tsx packages/shared/src/sim.cli.ts ablate [level] [teams]        —— 技能消融：通用 add-one + 签名 remove-one
  */
 import {
   standardBuilds,
@@ -14,6 +15,9 @@ import {
   archetypeDuel,
   archetypeDraftValue,
   archetypePairValue,
+  genericSkillAblation,
+  signatureAblation,
+  formatAblation,
   formatArchetypeRanking,
   formatContribRanking,
   formatUsage,
@@ -24,11 +28,19 @@ import { ARCHETYPE_IDS } from './roster.js';
 const mode = process.argv[2];
 const isBalance = mode === 'balance';
 const isPair = mode === 'pair';
-const args = isBalance ? process.argv.slice(3) : isPair ? process.argv.slice(5) : process.argv.slice(2);
+const isAblate = mode === 'ablate';
+const args = isBalance || isAblate ? process.argv.slice(3) : isPair ? process.argv.slice(5) : process.argv.slice(2);
 const level = Number(args[0] ?? 10);
 const gamesPer = Number(args[1] ?? 200);
 
-if (isPair) {
+if (isAblate) {
+  const teams = Number(args[1] ?? 40);
+  const lv = Number(args[0] ?? 12); // 默认 Lv12：charge_smash/revive Lv11 解锁
+  console.log(`\n=== 技能消融实验（Lv${lv}，${teams} 支随机队 × 8 场/变体）===`);
+  console.log('\n' + formatAblation(genericSkillAblation(lv, teams, 8), '通用技能 add-one（全员附学，vs 纯签名对照）'));
+  console.log('\n' + formatAblation(signatureAblation(lv, teams, 8), '签名技能 remove-one（仅对其拥有者）'));
+  console.log('');
+} else if (isPair) {
   const [idA, idB] = [process.argv[3]!, process.argv[4]!];
   const teams = Number(args[1] ?? 40);
   console.log(`\n=== 双人组合联动专项：${idA} + ${idB}（Lv${level}，${teams} 支随机队 × 8 场）===`);

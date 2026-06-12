@@ -7,6 +7,7 @@ import {
   type FighterRef,
 } from '@italian-brainrot/shared';
 import { fighterColor, fighterSprite, shouldFlip, type Pose, type PoseMap, type LungeMap } from './presentation.js';
+import { useI18n } from './i18n.js';
 
 const W = 1240;
 const H = 700;
@@ -86,6 +87,7 @@ export function BattleStage({
   /** 背景图 URL（不传/缺图回退默认渐变）。 */
   background?: string | null;
 }) {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const slotsRef = useRef<Slot[]>([]);
   // 各角色当前绘制位置（跨渲染保留 → 突进/归位都是平滑缓动）
@@ -108,7 +110,7 @@ export function BattleStage({
       ctx.fillStyle = '#5a6680';
       ctx.font = '18px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('配好队伍后点「开始战斗」', W / 2, H / 2);
+      ctx.fillText(t.stageEmpty, W / 2, H / 2);
       return;
     }
     const cur = state.winner === undefined ? currentFighter(state) : undefined;
@@ -154,7 +156,7 @@ export function BattleStage({
     const render = () => {
       ctx.clearRect(0, 0, W, H);
       drawBackground(ctx, background ?? null, onSpriteReady);
-      drawInitiativeBar(ctx, state, cur, onSpriteReady);
+      drawInitiativeBar(ctx, state, cur, t.initOrder, onSpriteReady);
       slotsRef.current = [];
       const sorted = [...fighters].sort(
         (m, n) => Number(lungeKeys.has(keyOf(m.f))) - Number(lungeKeys.has(keyOf(n.f))),
@@ -189,7 +191,7 @@ export function BattleStage({
     };
     stepAnim();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [state, candidates, poses, lunges, background, bump]);
+  }, [state, candidates, poses, lunges, background, bump, t]);
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!onPickTarget || !candidates?.length) return;
@@ -247,13 +249,14 @@ function drawInitiativeBar(
   ctx: CanvasRenderingContext2D,
   state: BattleState,
   cur: FighterRT | undefined,
+  label: string,
   onSpriteReady: () => void,
 ) {
   const order = state.order;
   ctx.fillStyle = '#8b98ad';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('先攻顺序 ▶', 10, 18);
+  ctx.fillText(label, 10, 18);
 
   const startX = 100;
   const r = 20;
