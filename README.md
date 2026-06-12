@@ -21,8 +21,10 @@ npm run dev:client   # 启动游戏 → http://localhost:5173
 ```bash
 npm test                 # 跑所有单测（shared 引擎）
 npm run sim 10 200       # 平衡模拟：属性向 build 循环赛胜率表
-npm run sim:balance 10 200  # 角色平衡：12 角色 1v1 + 3v3 胜率（只带签名+被动）
-npm run art              # 美术资产管线：把 art/raw/ 的角色图统一成战场 sprite（见 art/README.md）
+npm run sim:balance 10 200  # 角色平衡：12 角色 1v1 + 3v3 选秀价值 + 技能使用率
+npm run sim pair <A> <B>    # 双人组合联动专项（如 CA+BC）
+npm run sim ablate 12 40    # 技能消融：通用 add-one + 签名 remove-one 胜率贡献
+npm run art              # 美术资产管线：角色姿势图/背景图 → 战场资产（见 art/README.md）
 npm run build            # 生产构建
 ```
 
@@ -39,8 +41,11 @@ npm run build            # 生产构建
 2. **战斗**：3v3 回合制，全员按**先攻**（1d20 + DEX）排序轮流出手
    - 每回合选：普通攻击 或 一个技能（需选目标的两步选）
    - 所有判定走**可视骰子**（命中 1d20 对 AC、暴击、伤害骰），战斗日志像跑团一样摊开
-   - 战斗按事件**逐步回放**（可调速 1x/2x/瞬间）；可开「自动战斗」让我方也交给 AI 观战
+   - 战斗按事件**逐步回放**（可调速 1x/2x/瞬间）：姿势切换（攻击/受击/倒地图）+ 单体攻击**突进**动画；
+     可开「自动战斗」让我方也交给 AI 观战
 3. **胜负**：把对面 3 人**全部打至倒地**即获胜
+
+界面**中英双语**（右上角切换，含战斗日志/技能描述全量翻译）；战场背景可选（下拉框）。
 
 ### 核心机制
 
@@ -49,7 +54,7 @@ npm run build            # 生产构建
 | **属性** | STR→命中/伤害；DEX→护甲(AC)/先攻；CON→生命/吸血 |
 | **能量** | 从 0 起，普攻**命中** +1、**闪避**敌方攻击 +1，放技能消耗（cost 0~3）。逼你"想放大招得先普攻"，高 AC 还能防御转资源 |
 | **倒地** | HP≤0 倒地（不能行动、**不可被补刀**），队友可用复活术救回；倒地超 3 回合未救 → 彻底死亡 |
-| **技能** | 按 cost 0~3 耗能；攻击/防御/AOE/治疗/复活/增益 + 各角色出生自带的专属签名技能 |
+| **技能** | 按 cost 0~3 耗能；攻击/防御/AOE（带灼烧 DoT）/治疗/复活/增益 + 各角色出生自带的专属签名技能 |
 | **被动** | 每个角色一个天生被动（不占栏）：常驻减伤/反伤/续航、受击叠层、暴击追击、联动、额外回合等 |
 
 数值常量：满级 15、属性上限 30、出战 3 人、技能栏 4 格。
@@ -75,15 +80,17 @@ packages/
 │  ├─ evaluate.ts    局面评估 V(state)（推演 AI 的价值函数，权重集中可调）
 │  ├─ dice.ts        确定性掷骰
 │  ├─ rng.ts         确定性随机（可序列化游标）
-│  └─ sim.ts         平衡模拟工具（批量对局 + 胜率矩阵）
-└─ client/   React + Vite + Canvas（占位美术）
-   ├─ App.tsx          编排：配队阶段 → 战斗阶段
-   ├─ TeamEditor.tsx   队伍编辑（选 3 出战、查重）
+│  └─ sim.ts         平衡模拟（胜率矩阵/选秀价值/联动专项/技能消融/使用率）
+└─ client/   React + Vite + Canvas
+   ├─ App.tsx          编排：三步向导 + 战斗页布局（左侧信息栏 + 战场）
+   ├─ TeamCarousel.tsx 选队转盘（环形轨道、属性/简介展示）
    ├─ BuildEditor.tsx  单角色养成（加点/洗点/学技能）
-   ├─ BattleStage.tsx  Canvas 战场（先攻条 + 3v3 错位布局 + 角色 sprite/朝向）
+   ├─ BattleStage.tsx  Canvas 战场（HiDPI、姿势切换、突进动画、背景、先攻条）
    ├─ playback.ts      事件回放折叠（把引擎事件流逐帧推进显示态）
-   ├─ presentation.ts  表现层映射（主题色 / sprite 路径 / 朝向）
-   └─ useBattle.ts     回合制驱动 + 两步选目标 + 自动战斗 + 事件回放
+   ├─ presentation.ts  表现层映射（主题色 / sprite 姿势路径 / 朝向）
+   ├─ battleLog.ts     事件 → 跑团风日志行（双语）
+   ├─ i18n.tsx         中英双语（词典 / 技能与简介英文 / 语言切换）
+   └─ useBattle.ts     回合制驱动 + 两步选目标 + 自动战斗 + 事件回放 + 姿势/突进表
 ```
 
 ### 几个设计要点
@@ -98,32 +105,36 @@ packages/
 ## 测试与平衡
 
 - **单测**：`npm test`，覆盖战斗引擎、属性派生、技能、被动、养成、AI、模拟工具。
-- **平衡模拟**：`npm run sim` 跑属性向 build 循环赛；`npm run sim:balance` 跑 12 角色
-  1v1（隔离单体）+ 3v3 选秀价值（随机组队蒙特卡洛，消除基准队偏置）胜率，并输出**技能使用率**
-  （AI 健康度仪表盘：某角色签名使用率 ≈0 说明其胜率数据不反映 kit 强度）。
-  调参依据见 [`BALANCE_REPORT.md`](BALANCE_REPORT.md)。
-  注意：贪心 AI 已改为 1-ply 真实引擎推演（`ai.ts` + `evaluate.ts`），sim 比公式版慢约 5 倍，
-  **旧报告的胜率结论需用新 AI 重跑后重审**。
+- **平衡模拟**（调参依据与数据见 [`BALANCE_REPORT.md`](BALANCE_REPORT.md)）：
+  - `sim:balance` — 12 角色 1v1（隔离单体）+ 3v3 选秀价值（随机组队蒙特卡洛，消除基准队偏置），
+    并输出**技能使用率**（AI 健康度仪表盘：签名使用率 ≈0 说明该角色胜率数据不反映 kit 强度）
+  - `sim pair` — 双人组合联动专项（量化 CA↔BC 这类同队联动）
+  - `sim ablate` — 技能消融：通用技能 add-one + 签名 remove-one 的胜率贡献
+- **AI**：贪心档 = 1-ply 真实引擎推演 + 局面评估（`ai.ts` + `evaluate.ts`）。
+  手写公式已废弃——新技能/被动加进 effects/passives 后 AI 自动会用，sim 永不与规则脱节。
 
 ---
 
 ## 文档
 
 - [`CHARACTERS.md`](CHARACTERS.md) — 角色图鉴：12 个 Italian Brainrot 角色的背景 + 专属技能（被动/签名）
-- [`BALANCE_REPORT.md`](BALANCE_REPORT.md) — 平衡性报告：sim 胜率数据 + 已实施的调参补丁
-- [`ART_PLAN.md`](ART_PLAN.md) — 美术方案：事件回放 + 状态动画 + 资产管线路线
-- [`art/README.md`](art/README.md) — 美术资产管线用法（原图 → 战场 sprite）
+- [`BALANCE_REPORT.md`](BALANCE_REPORT.md) — 平衡性报告：方法论 + sim 胜率数据 + 历轮调参补丁 + 消融实验
+- [`ART_PLAN.md`](ART_PLAN.md) — 美术与动画：现状 + 剩余路线
+- [`art/README.md`](art/README.md) — 美术资产管线用法（姿势图/背景图 → 战场资产）
+- [`art/PROMPTS.md`](art/PROMPTS.md) — 生图 prompt 包（12 角色姿势 + 背景场景，含一致性锁定模板）
 - [`legacy/README.md`](legacy/README.md) — 8 年前 C++/Qt 原版的说明 + 玩法/数值考古
 
 ---
 
 ## 现状与路线
 
-战斗系统已较完整：3v3、能量、通用技能池、**每角色专属被动 + 签名技能**、养成、AI、
-可视骰子 + **事件逐帧回放**、平衡工具；Italian Brainrot 换皮 + 角色 sprite（带朝向）。
+已完成：3v3 战斗全套（能量/倒地/控制/灼烧 DoT）、每角色**专属被动 + 签名技能**、养成、
+**推演式 AI**、可视骰子 + 事件逐帧回放、**姿势切换 + 突进动画**、12 角色多姿势 sprite +
+可选战场背景、**中英双语**、平衡工具链（选秀价值/联动专项/消融实验/使用率仪表盘）+
+**三轮 sim 驱动调参**（见 [`BALANCE_REPORT.md`](BALANCE_REPORT.md)）。
 
 未做（backlog）：
-- **数值平衡**：已做一轮 sim 驱动调参（见 [`BALANCE_REPORT.md`](BALANCE_REPORT.md)），头尾仍在迭代；
-  CA↔BC 联动需加专门 sim 才能评判。
-- **状态动画**：受击抖动/攻击突进/跳字等（[`ART_PLAN.md`](ART_PLAN.md) Step B）。
+- **平衡观察项**：Trippi 3v3 / Frigo 1v1 偏高、Chimpanzini 3v3 偏低（见报告"剩余问题"）。
+- **战斗特效**（[`ART_PLAN.md`](ART_PLAN.md)）：跳字、受击闪白、暴击震屏等高光表现。
+- **难度分级**：AI 已有 random/greedy 两档（`AiLevel`），客户端尚未暴露难度选择。
 - 外层游戏循环（角色获取/解锁）、联机 PvP（`packages/server` 待建）、登录存档。

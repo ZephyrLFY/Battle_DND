@@ -22,8 +22,10 @@ export const VW = {
   energy: 2.2,
   /** 每个昏迷回合：对方少一次行动。 */
   stunnedTurn: -6,
-  /** 蓄力完成（下次攻击必中 4d6）。 */
-  charged: 9,
+  /** 蓄力完成（下次攻击 4d6，仍需命中）。 */
+  charged: 7,
+  /** 每个灼烧剩余回合（期望 −2 HP/回合）。 */
+  burnTurn: -2,
   /** 战吼/华尔兹增益生效中（下次攻击 +2 命中 +2 伤害）。 */
   rally: 3.5,
   /** 通用伤害增益（华尔兹舞步强化）生效中，每点。 */
@@ -86,6 +88,7 @@ export function fighterValue(f: FighterRT): number {
   if (f.hitPenaltyTurns > 0) v += f.hitPenaltyAmt * VW.hitPenaltyPoint;
   if (f.acDebuffTurns > 0) v += f.acDebuffAmt * VW.acDebuffPoint;
   v += f.controlImmuneTurns * VW.controlImmuneTurn;
+  v += f.burnTurns * VW.burnTurn;
   v += f.extraTurns * VW.extraTurn;
 
   for (const [key, w] of Object.entries(VW.passiveStacks)) {

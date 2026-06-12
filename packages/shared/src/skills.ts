@@ -12,7 +12,6 @@
 export type SkillId =
   | 'brave_strike'
   | 'feint'
-  | 'stun_strike'
   | 'flurry'
   | 'charge_smash'
   | 'precise_aim'
@@ -100,7 +99,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 1,
     unlockLevel: 3,
-    desc: '本次攻击伤害骰 1d6→3d6，命中 +2。',
+    desc: '本次攻击伤害骰 1d6→2d6，命中 +2。', // 平衡补丁：3d6→2d6（消融实测 +34pt 超模）
   },
   shield_block: {
     id: 'shield_block',
@@ -111,16 +110,8 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     unlockLevel: 3,
     desc: '本回合 AC +3，反弹 1 点伤害给下一次攻击者，并回复 2 点能量（防御转资源）。',
   },
-  // ── 中阶法术（Lv6/8，cost 2）──
-  stun_strike: {
-    id: 'stun_strike',
-    name: '眩晕突袭',
-    category: 'attack',
-    targetType: 'one_enemy',
-    cost: 2,
-    unlockLevel: 6,
-    desc: '攻击命中后，对方体质豁免(1d20+CON)<13 则下回合昏迷。',
-  },
+  // ── 中阶法术（Lv8，cost 2）──
+  // （眩晕突袭已删除：消融实测贡献 −1pt，且控制体验与签名控制技重叠）
   flurry: {
     id: 'flurry',
     name: '疾风连击',
@@ -130,15 +121,15 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     unlockLevel: 8,
     desc: '本回合攻击 2 次（各自独立命中/伤害骰）。',
   },
-  // ── 高阶法术（Lv11，cost 3，终极一击）──
+  // ── 高阶法术（Lv11）──
   charge_smash: {
     id: 'charge_smash',
     name: '蓄力重击',
     category: 'charge',
     targetType: 'one_enemy',
-    cost: 3,
+    cost: 2, // 平衡补丁 3b：3→2（去必中后 0 贡献，降费补偿"弃一回合"的成本）
     unlockLevel: 11,
-    desc: '本回合不动，下回合攻击伤害骰 1d6→4d6 且必命中。',
+    desc: '本回合不动，下回合攻击伤害骰 1d6→4d6（仍需命中判定）。', // 平衡补丁：去掉必中（消融 +24pt）
   },
 
   // ── 团队技能（3v3）──
@@ -150,6 +141,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     cost: 2,
     unlockLevel: 3,
     desc: '回复一个友方 2d4 + CON 调整 的生命（消耗 2 能量，不能作用于阵亡者）。',
+    // ↑ heal 未动；revive/firestorm 见下方平衡补丁
   },
   war_cry: {
     id: 'war_cry',
@@ -167,7 +159,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'all_enemies',
     cost: 2,
     unlockLevel: 8,
-    desc: '对全体敌方各掷命中 + 2d6 伤害（AOE）。',
+    desc: '对全体敌方各掷命中 + 2d6 伤害（AOE）；命中者进入灼烧：接下来 2 回合每回合掉 1d3。', // 平衡补丁：附加灼烧 DoT（消融 +1pt 过弱）
   },
   revive: {
     id: 'revive',
@@ -176,7 +168,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_ally',
     cost: 3,
     unlockLevel: 11,
-    desc: '拉起一个倒地友方，回复其 15% 最大生命（仅对倒地者生效）。', // 平衡补丁：1d8 复活即倒
+    desc: '拉起一个倒地友方，回复其 15% 最大生命（仅对倒地者生效）。', // 平衡补丁 3c：去掉 1d8
   },
 
   // ── 角色签名技能（专属，占技能栏；只有对应 archetype 能学）──
@@ -205,7 +197,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_enemy',
     cost: 0, // 平衡补丁：1→0。猫哈气不要钱——免费 tempo 工具（原 EV 低于普攻，sim 使用率≈0）。
     unlockLevel: 3,
-    desc: '【Trippi 专属】猫式威吓（不耗能）：抓一爪（1d4）并令一个敌人接下来 2 回合命中 −4。',
+    desc: '【Trippi 专属】猫式威吓（不耗能）：抓一爪（1d4），命中则目标下回合昏迷（被吓住）。', // 平衡补丁三轮：降命中改为命中即眩晕（消融 Δ≈0）
   },
   sig_lirili_timestop: {
     id: 'sig_lirili_timestop',
@@ -239,7 +231,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     name: '地毯式轰炸',
     category: 'aoe',
     targetType: 'all_enemies',
-    cost: 3,
+    cost: 2, // 平衡补丁 3b：3→2。大团战角色 3v3 仅 45%，降费提高签名上场率
     unlockLevel: 8,
     desc: '【Bombardiro 专属】对全体敌方各 2d6 轰炸；每个目标体质豁免（DC 11）失败则被震慑（昏迷）。',
   },

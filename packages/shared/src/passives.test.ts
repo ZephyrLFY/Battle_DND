@@ -158,7 +158,7 @@ describe('CA↔BC 联动「咖啡与舞伴」', () => {
 });
 
 describe('Trippi 九命怪猫', () => {
-  it('onWouldGoDown 首次拦截：25% maxHp 存活 + 清负面；第二次放行', () => {
+  it('onWouldGoDown 首次拦截：15% maxHp 存活 + 清负面；第二次放行', () => {
     const { state } = createBattle([mk('TrippiTroppi', 10)], [mk('TungSahur', 10)], 1);
     const tt = fighter(state, 'a', 'TrippiTroppi');
     const p = passiveOf('TrippiTroppi')!;
@@ -166,7 +166,7 @@ describe('Trippi 九命怪猫', () => {
     tt.stunned = 2;
     const vetoed = p.onWouldGoDown!(pctx(state, tt));
     expect(vetoed).toBe(true);
-    expect(tt.hp).toBe(Math.max(1, Math.floor(tt.stats.maxHp * 0.25))); // 平衡补丁：1 HP → 25% maxHp
+    expect(tt.hp).toBe(Math.max(1, Math.floor(tt.stats.maxHp * 0.15))); // 平衡补丁三轮：25% → 15%（哈气重做补偿）
     expect(tt.stunned).toBe(0);
     // 第二次：已用过 → 不拦截
     tt.hp = 0;

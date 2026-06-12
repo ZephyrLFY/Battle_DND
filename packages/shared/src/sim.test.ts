@@ -10,6 +10,8 @@ import {
   archetypeDuel,
   archetypeTeamContribution,
   archetypeDraftValue,
+  genericSkillAblation,
+  signatureAblation,
 } from './sim.js';
 import { abilitiesOf } from './combatant.js';
 import { spentPoints, availablePoints } from './leveling.js';
@@ -108,5 +110,26 @@ describe('角色平衡 sim（纯签名+被动）', () => {
       expect(r.winRate).toBeLessThanOrEqual(1);
     }
     expect(archetypeDraftValue(8, 4, 4)).toEqual(rows); // 确定性
+  });
+
+  it('genericSkillAblation：限定技能输出对应行、对照组一致、确定性', () => {
+    const rows = genericSkillAblation(12, 3, 3, ['brave_strike', 'heal']);
+    expect(rows.map((r) => r.id)).toEqual(['brave_strike', 'heal']);
+    for (const r of rows) {
+      expect(r.withRate).toBeGreaterThanOrEqual(0);
+      expect(r.withRate).toBeLessThanOrEqual(1);
+      expect(r.delta).toBeCloseTo(r.withRate - r.withoutRate, 5);
+    }
+    expect(rows[0]!.withoutRate).toBe(rows[1]!.withoutRate); // 共享同一对照组
+    expect(genericSkillAblation(12, 3, 3, ['brave_strike', 'heal'])).toEqual(rows); // 确定性
+  });
+
+  it('signatureAblation：限定角色输出对应行、胜率合法、确定性', () => {
+    const rows = signatureAblation(10, 3, 3, ['TungSahur']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe('TungSahur');
+    expect(rows[0]!.withRate).toBeGreaterThanOrEqual(0);
+    expect(rows[0]!.withoutRate).toBeLessThanOrEqual(1);
+    expect(signatureAblation(10, 3, 3, ['TungSahur'])).toEqual(rows); // 确定性
   });
 });

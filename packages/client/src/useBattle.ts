@@ -28,7 +28,6 @@ import {
   type FighterRef,
   type TargetType,
 } from '@italian-brainrot/shared';
-import { eventToLines } from './battleLog.js';
 import { cloneView, applyEventToView } from './playback.js';
 import type { PoseMap, LungeMap, FloatFx } from './presentation.js';
 
@@ -53,7 +52,8 @@ export interface UseBattle {
   lunges: LungeMap;
   /** 浮动战斗文字（伤害/治疗/MISS 跳字），随回放事件生成，过期由 BattleStage 渐隐。 */
   floats: FloatFx[];
-  log: string[];
+  /** 已回放的事件（日志数据源）。渲染时按当前语言格式化 → 切语言历史日志也跟着切。 */
+  logEvents: BattleEvent[];
   myTurn: boolean;
   actions: ActionOption[];
   myEnergy: number;
@@ -77,7 +77,7 @@ export function useBattle(): UseBattle {
   const logicRef = useRef<BattleState | null>(null);
   // 显示态（回放帧）
   const [view, setView] = useState<BattleState | null>(null);
-  const [log, setLog] = useState<string[]>([]);
+  const [logEvents, setLogEvents] = useState<BattleEvent[]>([]);
   const [auto, setAuto] = useState(false);
   const [pending, setPending] = useState<PendingTarget | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -179,7 +179,7 @@ export function useBattle(): UseBattle {
     }
   }, []);
 
-  /** 折叠一个事件到显示态 + 更新姿势/突进/跳字 + 追加日志。 */
+  /** 折叠一个事件到显示态 + 更新姿势/突进/跳字 + 追加日志事件。 */
   const foldOne = useCallback((ev: BattleEvent) => {
     if (viewRef.current) {
       applyEventToView(viewRef.current, ev);
@@ -194,8 +194,7 @@ export function useBattle(): UseBattle {
       const now = fx.at;
       setFloats((prev) => [...prev.filter((f) => now - f.at < 1500), fx]); // 追加 + 惰性清过期
     }
-    const lines = eventToLines(ev);
-    if (lines.length) setLog((prev) => [...prev, ...lines]);
+    setLogEvents((prev) => [...prev, ev]);
   }, [updateFx, makeFloat]);
 
   /**
@@ -229,10 +228,10 @@ export function useBattle(): UseBattle {
       for (const ev of queueRef.current) {
         if (viewRef.current) applyEventToView(viewRef.current, ev);
       }
-      const allLines = queueRef.current.flatMap(eventToLines);
+      const drained = queueRef.current;
       queueRef.current = [];
       if (viewRef.current) setView(cloneView(viewRef.current));
-      if (allLines.length) setLog((prev) => [...prev, ...allLines]);
+      if (drained.length) setLogEvents((prev) => [...prev, ...drained]);
       posesRef.current = {}; // 瞬间档不播姿势/突进/跳字
       lungesRef.current = {};
       critPendingRef.current.clear();
@@ -287,7 +286,7 @@ export function useBattle(): UseBattle {
       setPoses({});
       setLunges({});
       setFloats([]);
-      setLog([]);
+      setLogEvents([]);
       setView(cloneView(s0));
       setPlaying(false);
       enqueue(events);
@@ -400,7 +399,7 @@ export function useBattle(): UseBattle {
     poses,
     lunges,
     floats,
-    log,
+    logEvents,
     myTurn,
     actions,
     myEnergy,

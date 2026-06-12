@@ -5,6 +5,9 @@ body {
   background: #0e1320;
   color: #e6edf3;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* 显式行高：中/英字体的 normal 行高不同（中文行盒更高），
+     切语言会导致所有文字撑起的容器微胀微缩。数值行高与脚本无关。 */
+  line-height: 1.55;
 }
 
 .app {
@@ -16,6 +19,28 @@ body {
    头部（标题/步骤条）与其他页保持一致，只压缩步骤条到战场之间的间距。 */
 .app-wide { max-width: 1620px; }
 .app-wide .stepbar { margin-bottom: 6px; }
+/* 底部按钮与操作面板的间距 = 操作面板与战场的间距（12px，来自 action-panel 的 margin） */
+.app-wide .controls { margin: 0 0 12px; }
+
+/* 右上角语言切换 */
+.lang-toggle {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #182032;
+  border: 1px solid #2c3650;
+  color: #c2cee0;
+  border-radius: 18px;
+}
+.lang-toggle:hover { background: #2c3650; color: #fff; border-color: #4a6; }
+.lang-toggle svg { display: block; }
 
 /* ── 战斗页布局：左侧信息栏 + 右侧战场 ── */
 .battle-layout {
@@ -32,7 +57,9 @@ body {
   border: 1px solid #28324a;
   border-radius: 12px;
   overflow: hidden;
-  /* 高度由 flex stretch 跟随右列；内容用 absolute 填充 → 永远不会反向撑高页面 */
+  /* 高度由 flex stretch 跟随右列；内容用 absolute 填充 → 永远不会反向撑高页面。
+     margin-bottom 让左列比右列矮约 1/10（视觉留白）。 */
+  margin-bottom: 86px;
 }
 .side-inner {
   position: absolute;
@@ -126,7 +153,7 @@ body {
   padding: 10px 12px;
   pointer-events: none;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  line-height: normal;
+  line-height: 1.4;
 }
 .fc-tip-head {
   display: flex;
@@ -140,6 +167,7 @@ body {
 
 h1 {
   font-size: 22px;
+  line-height: 1.3;
   margin: 0 0 20px;
 }
 h1 .sub {
@@ -207,8 +235,13 @@ button {
   padding: 10px 18px;
   font-weight: 700;
   font-size: 14px;
+  line-height: 1.3; /* 显式行高：消除中英字体 normal 行高差导致的按钮高度抖动 */
   background: #2c3650;
   color: #e6edf3;
+}
+select,
+input {
+  line-height: 1.3;
 }
 button:disabled {
   opacity: 0.5;

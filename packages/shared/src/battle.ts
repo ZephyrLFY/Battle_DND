@@ -72,6 +72,7 @@ function mkFighter(team: Side, c: Combatant): FighterRT {
     acDebuffTurns: 0,
     acDebuffAmt: 0,
     controlImmuneTurns: 0,
+    burnTurns: 0,
     extraTurns: 0,
     passiveState: {},
   };
@@ -296,6 +297,21 @@ export function applyAction(
   }
   if (actor.controlImmuneTurns > 0) actor.controlImmuneTurns--;
 
+  // 灼烧 DoT：自己回合开始掉 1d3（倒地者不烧——已经倒了）
+  if (!actor.downed && !actor.dead && actor.burnTurns > 0) {
+    actor.burnTurns--;
+    const r = roll(rng, '1d3');
+    actor.hp = Math.max(0, actor.hp - r.total);
+    emit({
+      t: 'damage',
+      to: refOf(actor),
+      roll: { spec: '灼烧', rolls: r.rolls, bonus: 0, total: r.total },
+      mitigated: 0,
+      dealt: r.total,
+      hpLeft: actor.hp,
+    });
+  }
+
   // 被动 onTurnStart（倒地/昏迷者不触发）。先让被动读上一回合的 __acted，再清零本回合。
   if (!actor.downed && actor.stunned <= 0) {
     passiveOf(actor.archetypeId)?.onTurnStart?.(passiveCtx(next, actor, rng, emit));
@@ -315,6 +331,8 @@ export function applyAction(
   } else if (actor.stunned > 0) {
     actor.stunned--;
     emit({ t: 'skip', who: refOf(actor), why: 'stunned' });
+  } else if (actor.hp <= 0) {
+    // 灼烧在回合开始把自己烧倒：本回合不行动，倒地由下方 settleCasualties 统一结算
   } else {
     perform(next, actor, validate(next, actor, action), rng, emit);
   }
@@ -468,7 +486,8 @@ function doAttack(
   // 目标 AC = 有效 AC + 自身护盾加成 − 破甲减益（佯攻），下限 1。
   const acDebuff = target.acDebuffTurns > 0 ? target.acDebuffAmt : 0;
   const targetAc = Math.max(1, targetStats.ac + target.acBonus - acDebuff);
-  const autoHit = mods.charged || ar.nat20;
+  // 必中改由 mods.autoHit 单独控制（蓄力重击不再必中；签名必中技自带 autoHit）
+  const autoHit = mods.autoHit || ar.nat20;
   const hit = !ar.nat1 && (autoHit || ar.total >= targetAc);
   const crit = ar.nat20;
 
@@ -493,8 +512,8 @@ function doAttack(
     return false;
   }
 
-  // 伤害骰：固定小招(佯攻 1d4) > 蓄力 4d6 > 英勇 3d6 > AOE 2d6 > 普攻 1d6
-  let dmgSpec = mods.fixedDamage ?? (mods.charged ? '4d6' : mods.brave ? '3d6' : mods.aoe ? '2d6' : '1d6');
+  // 伤害骰：固定小招(佯攻 1d4，无 STR) > 自定义档(dice，含 STR) > 重击档 4d6 > 英勇 2d6 > AOE 2d6 > 普攻 1d6
+  let dmgSpec = mods.fixedDamage ?? mods.dice ?? (mods.charged ? '4d6' : mods.brave ? '2d6' : mods.aoe ? '2d6' : '1d6');
   if (crit) dmgSpec = doubleDice(dmgSpec);
   // 固定小招/AOE 不加 STR 伤害调整；战吼额外 +2 伤害。
   const rallyDmg = actor.rallyTurns > 0 ? 2 : 0;

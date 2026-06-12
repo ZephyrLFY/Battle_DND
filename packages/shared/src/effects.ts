@@ -31,7 +31,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   charge_smash: (ctx) => {
     // 蓄力：本回合不攻击，标记下回合强化（必中重击）
     ctx.actor.charged = true;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '蓄力中，下回合必中重击' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '蓄力中，下回合重击（4d6）', noteEn: 'Charging — next attack rolls 4d6' });
   },
   flurry: (ctx) => {
     const t = first(ctx);
@@ -39,22 +39,6 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     ctx.attack(t);
     if (t.hp > 0 && !t.dead) ctx.attack(t);
   },
-  stun_strike: (ctx) => {
-    const t = first(ctx);
-    if (!t) return;
-    ctx.attack(t);
-    if (t.hp > 0 && !t.downed && !t.dead && !isControlImmune(t)) {
-      // 体质豁免：对方 1d20+CON_mod ≥ 13 抵抗
-      const save = roll(ctx.rng, '1d20', t.stats.conMod);
-      if (save.total < 13) {
-        t.stunned = 1;
-        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被眩晕（豁免 ${save.total}<13）` });
-      } else {
-        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 抵抗了眩晕（豁免 ${save.total}≥13）` });
-      }
-    }
-  },
-
   // —— 防御姿态（self）——
   shield_block: (ctx) => {
     ctx.actor.acBonus += 3;
@@ -64,7 +48,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     const before = ctx.actor.energy;
     ctx.actor.energy = Math.min(ctx.actor.stats.maxEnergy, ctx.actor.energy + 2);
     const gained = ctx.actor.energy - before;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `本回合 AC+3、反弹伤害，回 ${gained} 能量` });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `本回合 AC+3、反弹伤害，回 ${gained} 能量`, noteEn: `AC +3 this turn, thorns up, +${gained} energy` });
     if (gained > 0) ctx.emit({ t: 'energy', who: ref(ctx.actor), delta: gained, now: ctx.actor.energy });
   },
   // —— 佯攻（cost 0）：小伤 + 破甲，给队友铺路 ——
@@ -75,7 +59,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     if (t.hp > 0 && !t.downed && !t.dead) {
       t.acDebuffTurns = 2; // 2 因目标自己回合开始先衰减 1 → 覆盖其下一回合
       t.acDebuffAmt = 2;
-      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `佯攻破甲！${t.name} 下回合 AC −2` });
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `佯攻破甲！${t.name} 下回合 AC −2`, noteEn: `Feint! ${t.name} AC −2 next turn` });
     }
   },
 
@@ -89,16 +73,22 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   revive: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || !t.downed) return; // 仅对倒地者生效
-    // 平衡补丁：1d8 → 15% maxHp（原版平均 4.5 血，复活即被一刀带走）
+    // 平衡补丁 3c：1d8 → 1d8+15% → 纯 15% maxHp（带骰版消融 +28pt 偏高，去骰回调）
     t.downed = false;
     t.downedTurns = 0;
     t.hp = Math.min(t.stats.maxHp, Math.max(1, Math.floor(t.stats.maxHp * 0.15)));
     ctx.emit({ t: 'revive', who: ref(t), hpLeft: t.hp });
   },
   firestorm: (ctx) => {
-    // AOE：对每个目标各发起一次"固伤命中"——这里走共享攻击管线（命中+1d6）
+    // AOE：对每个目标各发起一次"固伤命中"——走共享攻击管线（命中+2d6）。
+    // 平衡补丁：命中者附加灼烧（2 回合，每回合开始掉 1d3）。
     for (const t of ctx.targets) {
-      if (!t.dead && !t.downed) ctx.attack(t, { aoe: true });
+      if (t.dead || t.downed) continue;
+      const hit = ctx.attack(t, { aoe: true });
+      if (hit && t.hp > 0 && !t.downed && !t.dead) {
+        t.burnTurns = Math.max(t.burnTurns, 2);
+        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被点燃（灼烧 2 回合）`, noteEn: `${t.name} is set ablaze (burning for 2 turns)` });
+      }
     }
   },
   war_cry: (ctx) => {
@@ -106,7 +96,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     for (const t of ctx.targets) {
       if (!t.dead) t.rallyTurns = 2; // 2 因本方回合开始会先衰减 1
     }
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '战吼！全体友方下回合命中 +2' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '战吼！全体友方下回合命中 +2', noteEn: 'War cry! All allies +2 to hit next turn' });
   },
 
   // —— 角色签名技能 ——
@@ -126,40 +116,40 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     // 平衡补丁：反噬从「当前 HP 1/4」改为「实际造成伤害的一半」——
     // 旧版残血时反噬近乎免费（无下行风险）；新版炸得越狠自伤越重（含引信加伤）。
     const before = t.hp;
-    ctx.attack(t, { charged: true }); // 必中、伤害骰 4d6（复用蓄力档）
+    ctx.attack(t, { charged: true, autoHit: true }); // 必中、伤害骰 4d6（重击档；必中是签名特权）
     const recoil = Math.floor(((before - t.hp) * 3) / 4); // 系数 3/4：1/2 时实测仍 91% 胜率（满血期比旧版便宜）
     if (recoil > 0) {
       ctx.actor.hp = Math.max(0, ctx.actor.hp - recoil);
       ctx.emit({ t: 'damage', to: ref(ctx.actor), roll: { spec: '反噬', rolls: [recoil], bonus: 0, total: recoil }, mitigated: 0, dealt: recoil, hpLeft: ctx.actor.hp });
     }
   },
-  // 🐸 Trippi：哈气。令一个敌人下回合命中 −4（纯控，不造成伤害）。
+  // 🐸 Trippi：哈气。抓一爪（1d4），命中则吓住目标（下回合昏迷）。
+  // 平衡补丁三轮：降命中（−4）重做为命中即眩晕——旧版两轮数值 buff 后消融贡献仍 ≈0。
+  // 强度阀门：必须命中（1d4 爪击过 AC 判定）+ 吃控制免疫；Trippi 被动同步削（九命 25%→15%）。
   sig_trippi_hiss: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || t.downed) return;
-    // 抓一爪：小伤（1d4），给 Trippi 一点主动输出。
-    ctx.attack(t, { fixedDamage: '1d4' });
-    if (t.hp <= 0 || t.downed || t.dead) return;
+    const hit = ctx.attack(t, { fixedDamage: '1d4' });
+    if (!hit || t.hp <= 0 || t.downed || t.dead) return;
     if (isControlImmune(t)) {
-      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 免疫了哈气降命中` });
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 免疫了哈气`, noteEn: `${t.name} is immune to the hiss` });
       return;
     }
-    t.hitPenaltyTurns = 3; // 平衡补丁：覆盖目标接下来 2 个回合（3 因目标回合开始先衰减 1）
-    t.hitPenaltyAmt = 4;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `哈气！${t.name} 接下来 2 回合命中 −4` });
+    t.stunned = Math.max(t.stunned, 1);
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `哈气！${t.name} 被吓住，下回合无法行动`, noteEn: `Hiss! ${t.name} is terrified — stunned next turn` });
   },
   // 🌵🐘 Lirilì：时间静止。本回合用于发动，随后连续行动 2 次（净 +1 行动，对应「下回合行动2次」）。
   sig_lirili_timestop: (ctx) => {
     ctx.actor.extraTurns += 2;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '时间静止！连续行动 2 次' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '时间静止！连续行动 2 次', noteEn: 'Time stop! Acts twice in a row' });
   },
   // ☕ Cappuccino：斩首一击。必中；目标 HP<25% 时伤害骰翻倍（处决）。
   sig_cappuccino_behead: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || t.downed) return;
     const execute = t.hp < t.stats.maxHp * 0.25;
-    // 复用蓄力(必中, 4d6)做处决档；非处决用英勇(命中+2, 3d6)。
-    ctx.attack(t, execute ? { charged: true } : { brave: true });
+    // 处决档：必中 4d6；非处决用独立档（命中+2、3d6）——不再复用 brave 档（其 nerf 曾连带削了斩首）。
+    ctx.attack(t, execute ? { charged: true, autoHit: true } : { dice: '3d6', extraHitBonus: 2 });
   },
   // 🩰☕ Ballerina：华尔兹号令。全体友方下回合命中 +2 且 AC +1。
   sig_ballerina_waltz: (ctx) => {
@@ -172,7 +162,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       t.dmgBuffTurns = 2;
       t.dmgBuffAmt = Math.max(t.dmgBuffAmt, 2);
     }
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '华尔兹号令！全体友方命中 +2、AC +1、伤害提升' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '华尔兹号令！全体友方命中 +2、AC +1、伤害提升', noteEn: 'Waltz command! All allies +2 to hit, +1 AC, bonus damage' });
   },
   // 🐊 Bombardiro：地毯式轰炸。AOE 2d6；每目标体质豁免失败则震慑。
   sig_bombardiro_carpet: (ctx) => {
@@ -184,7 +174,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
         const save = roll(ctx.rng, '1d20', t.stats.conMod);
         if (save.total < 11) {
           t.stunned = 1;
-          ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被震慑（豁免 ${save.total}<11）` });
+          ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 被震慑（豁免 ${save.total}<11）`, noteEn: `${t.name} is dazed (save ${save.total} < 11)` });
         }
       }
     }
@@ -198,9 +188,9 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
       const save = roll(ctx.rng, '1d20', t.stats.conMod);
       if (save.total < 13) {
         t.stunned = 1;
-        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `藤蔓缠绕！${t.name} 被定身（豁免 ${save.total}<13）` });
+        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `藤蔓缠绕！${t.name} 被定身（豁免 ${save.total}<13）`, noteEn: `Vines! ${t.name} is rooted (save ${save.total} < 13)` });
       } else {
-        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 挣脱了藤蔓（豁免 ${save.total}≥13）` });
+        ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `${t.name} 挣脱了藤蔓（豁免 ${save.total}≥13）`, noteEn: `${t.name} broke free of the vines (save ${save.total} ≥ 13)` });
       }
     }
   },
@@ -208,11 +198,11 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   sig_boneca_ram: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || t.downed) return;
-    ctx.attack(t, { charged: true });
+    ctx.attack(t, { charged: true, autoHit: true }); // 必中是签名特权（蓄力重击已无必中）
     if (t.hp > 0 && !t.downed && !t.dead) {
       t.hitPenaltyTurns = 2; // 覆盖目标下一回合
       t.hitPenaltyAmt = Math.max(t.hitPenaltyAmt, 3);
-      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `撞退！${t.name} 下回合命中 −3` });
+      ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `撞退！${t.name} 下回合命中 −3`, noteEn: `Knockback! ${t.name} −3 to hit next turn` });
     }
   },
   // 🐪🧊 Frigo：冰封护盾。本回合 AC+3，接下来 2 回合免疫控制。
@@ -220,7 +210,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     ctx.actor.acBonus += 3;
     ctx.actor.acBonusTurns = 4; // 平衡补丁二轮：AC+3 持续 3 回合（4 因本方回合开始先衰减 1）
     ctx.actor.controlImmuneTurns = 4; // 同步 3 回合免控
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '冰封护盾！AC +3，免疫控制' });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: '冰封护盾！AC +3，免疫控制', noteEn: 'Ice shield! AC +3, immune to control effects' });
   },
   // 🦈👟 Tralalero：疾游连斩。2 次攻击，每次命中后本回合 AC +1。
   sig_tralalero_dash: (ctx) => {
@@ -245,7 +235,7 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     if (!t) return;
     const hits = Math.max(1, ctx.actor.energy);
     ctx.actor.energy = 0;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `狂猿连击！连打 ${hits} 次` });
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `狂猿连击！连打 ${hits} 次`, noteEn: `Ape frenzy! ${hits} strikes in a row` });
     for (let i = 0; i < hits; i++) {
       if (t.hp <= 0 || t.downed || t.dead) break;
       const before = t.hp;
