@@ -16,7 +16,8 @@ import {
   abilitiesOf,
   type Combatant,
 } from '@italian-brainrot/shared';
-import { fighterSprite, fighterBlurb } from './presentation.js';
+import { fighterSprite } from './presentation.js';
+import { useI18n, blurb } from './i18n.js';
 
 export function TeamCarousel({
   team,
@@ -25,6 +26,7 @@ export function TeamCarousel({
   team: Combatant[];
   onChange: (team: Combatant[]) => void;
 }) {
+  const { lang, t } = useI18n();
   const ids = ARCHETYPE_IDS;
   const n = ids.length;
   const [idx, setIdx] = useState(0);
@@ -51,8 +53,8 @@ export function TeamCarousel({
   return (
     <div className="carousel">
       <div className="carousel-count">
-        选择你的出战队伍 <b>{team.length}/{LINEUP_SIZE}</b>
-        <small className="carousel-hint">（1–{LINEUP_SIZE} 人，敌队等量）</small>
+        {t.pickTeam} <b>{team.length}/{LINEUP_SIZE}</b>
+        <small className="carousel-hint">{t.pickHintSize(LINEUP_SIZE)}</small>
       </div>
 
       {/* 属性（最上） */}
@@ -63,11 +65,11 @@ export function TeamCarousel({
       </div>
 
       {/* 简介（属性与角色之间） */}
-      <div className="carousel-blurb">{fighterBlurb(centerId)}</div>
+      <div className="carousel-blurb">{blurb(centerId, lang)}</div>
 
       {/* 角色转盘：环形定位，按到中心的有向偏移做平移 + 缩放过渡（CSS transition 驱动动画） */}
       <div className="carousel-stage">
-        <button className="carousel-arrow" onClick={prev} aria-label="上一个">‹</button>
+        <button className="carousel-arrow" onClick={prev} aria-label={t.prevAria}>‹</button>
 
         <div className="carousel-track">
           {ids.map((id, i) => {
@@ -91,13 +93,13 @@ export function TeamCarousel({
                 onClick={() => !isCenter && visible && setIdx(i)}
               >
                 <img src={fighterSprite(id)} alt={archetypeName(id)} />
-                {centerInTeam && <div className="carousel-badge">✓ 已在队中</div>}
+                {centerInTeam && <div className="carousel-badge">{t.inTeamBadge}</div>}
               </div>
             );
           })}
         </div>
 
-        <button className="carousel-arrow" onClick={next} aria-label="下一个">›</button>
+        <button className="carousel-arrow" onClick={next} aria-label={t.nextAria}>›</button>
       </div>
 
       <div className="carousel-name">{archetypeName(centerId)}</div>
@@ -107,7 +109,7 @@ export function TeamCarousel({
         onClick={toggleCenter}
         disabled={!inTeam && full}
       >
-        {inTeam ? '✓ 已在队中（点击移除）' : full ? '队伍已满' : '+ 加入出战'}
+        {inTeam ? t.inTeamRemove : full ? t.teamFull : t.addToTeam}
       </button>
 
       {/* 队伍槽位条 */}
@@ -125,7 +127,7 @@ export function TeamCarousel({
             <div key={i} className="slot filled" title={archetypeName(m.archetypeId)}>
               <img src={fighterSprite(m.archetypeId)} alt={archetypeName(m.archetypeId)} />
               <span className="slot-name">{archetypeName(m.archetypeId)}</span>
-              <button className="slot-remove" onClick={() => removeId(m.archetypeId)} aria-label="移除">×</button>
+              <button className="slot-remove" onClick={() => removeId(m.archetypeId)} aria-label={t.removeAria}>×</button>
             </div>
           );
         })}

@@ -66,6 +66,8 @@ export interface FighterRT {
   acDebuffAmt: number;
   /** 控制免疫剩余回合（冰封护盾）：>0 时免疫眩晕/定身/哈气等控制。 */
   controlImmuneTurns: number;
+  /** 灼烧剩余回合（烈焰风暴）：>0 时自己回合开始掉 1d3，每回合 −1。 */
+  burnTurns: number;
   /** 额外回合：>0 时本角色行动后不前进先攻指针、再行动一次（Lirilì 时间静止）。 */
   extraTurns: number;
   /**
@@ -127,7 +129,7 @@ export type BattleEvent =
   | { t: 'lifesteal'; who: FighterRef; amount: number; hpLeft: number }
   | { t: 'heal'; who: FighterRef; roll: RollDetail; amount: number; hpLeft: number }
   | { t: 'thorns'; to: FighterRef; roll: RollDetail; dealt: number; hpLeft: number }
-  | { t: 'buff'; who: FighterRef; note: string }
+  | { t: 'buff'; who: FighterRef; note: string; noteEn?: string }
   | { t: 'downed'; who: FighterRef }
   | { t: 'revive'; who: FighterRef; hpLeft: number }
   | { t: 'dead'; who: FighterRef }
@@ -144,17 +146,19 @@ export interface EffectCtx {
   targets: FighterRT[];
   rng: import('./rng.js').Rng;
   emit: (e: BattleEvent) => void;
-  /** 共享攻击管线：actor 攻击 target，可带强化修正。 */
-  attack: (target: FighterRT, mods?: AttackMods) => void;
+  /** 共享攻击管线：actor 攻击 target，可带强化修正。返回是否命中。 */
+  attack: (target: FighterRT, mods?: AttackMods) => boolean;
   /** 直接造成/回复，不走命中判定（治疗、AOE 固伤等用）。 */
   heal: (who: FighterRT, amount: number, roll: RollDetail) => void;
 }
 
 /** 攻击强化修正（技能传给共享攻击管线）。 */
 export interface AttackMods {
-  brave?: boolean; // 英勇打击：命中+2，伤害骰翻倍
+  brave?: boolean; // 英勇打击：命中+2，伤害骰 2d6
   advantage?: boolean; // 精准瞄准：优势命中
-  charged?: boolean; // 蓄力重击：必中，伤害骰 1d6→3d6
+  charged?: boolean; // 重击档：伤害骰 1d6→4d6（蓄力重击/部分签名复用；是否必中由 autoHit 单独控制）
+  /** 必中（自然 1 仍失手）。签名"必中"技能用；蓄力重击已不再必中。 */
+  autoHit?: boolean;
   /** AOE：固定 1d6、不加 STR 伤害调整（范围技能较轻）。 */
   aoe?: boolean;
   extraHitBonus?: number;
@@ -162,6 +166,11 @@ export interface AttackMods {
   fromSpell?: boolean;
   /** 固定伤害骰（佯攻 1d4 等小招）：覆盖默认 1d6，且不加 STR 伤害调整。 */
   fixedDamage?: string;
+  /**
+   * 自定义伤害骰（**保留** STR 伤害调整）：技能自带独立伤害档时用，
+   * 避免复用 brave/charged 档造成隐性耦合（教训：brave 3d6→2d6 连带削了斩首）。
+   */
+  dice?: string;
 }
 
 /**

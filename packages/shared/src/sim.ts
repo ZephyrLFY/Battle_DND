@@ -10,7 +10,7 @@ import { chooseActionGreedy } from './ai.js';
 import { newCombatant, abilitiesOf, type Combatant, type AbilityKey } from './combatant.js';
 import { allocate, learnSkill, availablePoints as availablePointsOf } from './leveling.js';
 import { ARCHETYPE_IDS } from './roster.js';
-import type { SkillId } from './skills.js';
+import { SKILLS, type SkillId } from './skills.js';
 
 export interface MatchResult {
   aWins: number;
@@ -346,6 +346,115 @@ export function archetypePairValue(
     sum += runMatch(myTeam, enemyTeams[s]!, gamesPer, tally).aWinRate;
   }
   return { id: `${idA}+${idB}`, winRate: round2(sum / teamsPer) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 技能消融实验：量化每个技能的胜率贡献
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 从全角色池抽 3 个不同 archetype（Fisher–Yates 局部洗牌）。 */
+function sampleTrioIds(rng: Rng, include?: string): string[] {
+  const pool = include ? ARCHETYPE_IDS.filter((x) => x !== include) : [...ARCHETYPE_IDS];
+  for (let i = 0; i < 3; i++) {
+    const j = rng.int(i, pool.length - 1);
+    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+  }
+  const picked = pool.slice(0, include ? 2 : 3);
+  return include ? [include, ...picked] : picked;
+}
+
+export interface AblationRow {
+  id: string;
+  /** 实验组胜率（带该技能）。 */
+  withRate: number;
+  /** 对照组胜率（不带）。 */
+  withoutRate: number;
+  /** 贡献值 = with − without（百分点，-1~1）。 */
+  delta: number;
+}
+
+/**
+ * 通用技能 add-one 消融：对照组 = 纯签名随机三人队 vs 共用敌队组（纯签名）；
+ * 实验组 = 我方全员额外学技能 s，其余（队伍组合/敌队/对局种子）完全相同 → 配对比较。
+ * delta = 该技能给团队带来的平均胜率增益。
+ *
+ * 注意口径：「全员同学一个技能」放大团队向技能（heal/war_cry 有 3 份），
+ * 衡量的是"这个技能值不值得被带"的强度信号，非单卡严格边际。
+ * level 建议 ≥12（charge_smash/revive Lv11 解锁，低等级会测不到）。
+ */
+export function genericSkillAblation(
+  level: number,
+  teamsPer: number,
+  gamesPer: number,
+  onlySkills?: SkillId[],
+): AblationRow[] {
+  const generic = (onlySkills ?? (Object.keys(SKILLS) as SkillId[])).filter((s) => !s.startsWith('sig_'));
+  const sig = (id: string) => signatureCombatant(id, level);
+  // 固定种子：队伍组合与敌队在所有变体间一致（配对比较，降方差）
+  const rng = new Rng(0xab1a7e);
+  const enemyTrios = Array.from({ length: teamsPer }, () => sampleTrioIds(rng));
+  const myTrios = Array.from({ length: teamsPer }, () => sampleTrioIds(rng));
+  const runWith = (build: (id: string) => Combatant): number => {
+    let sum = 0;
+    for (let s = 0; s < teamsPer; s++) {
+      sum += runMatch(myTrios[s]!.map(build), enemyTrios[s]!.map(sig), gamesPer).aWinRate;
+    }
+    return sum / teamsPer;
+  };
+  const ctrl = runWith(sig);
+  return generic.map((s) => {
+    const withRate = runWith((id) => {
+      try {
+        return learnSkill(sig(id), s);
+      } catch {
+        return sig(id); // 等级不够解锁 → 退回纯签名（该角色不贡献差异）
+      }
+    });
+    return { id: s, withRate: round2(withRate), withoutRate: round2(ctrl), delta: round2(withRate - ctrl) };
+  });
+}
+
+/**
+ * 签名技能 remove-one 消融：每个角色测「带签名 vs 剥离签名」的随机组队胜率差。
+ * 只动焦点角色（队友/敌人都正常带签名）；同一角色的两个变体用相同的队伍组合与敌队。
+ * delta = 该签名对其拥有者的胜率贡献（被动不动，仍然生效）。
+ */
+export function signatureAblation(
+  level: number,
+  teamsPer: number,
+  gamesPer: number,
+  onlyIds?: string[],
+): AblationRow[] {
+  const sig = (id: string) => signatureCombatant(id, level);
+  const stripped = (id: string): Combatant => ({ ...sig(id), skills: [] });
+  const rows: AblationRow[] = [];
+  for (const focal of onlyIds ?? ARCHETYPE_IDS) {
+    const rng = new Rng(0x51947 ^ ARCHETYPE_IDS.indexOf(focal)); // 每角色独立但确定
+    const enemyTrios = Array.from({ length: teamsPer }, () => sampleTrioIds(rng));
+    const myTrios = Array.from({ length: teamsPer }, () => sampleTrioIds(rng, focal));
+    const runFocal = (mkFocal: (id: string) => Combatant): number => {
+      let sum = 0;
+      for (let s = 0; s < teamsPer; s++) {
+        const team = myTrios[s]!.map((id) => (id === focal ? mkFocal(id) : sig(id)));
+        sum += runMatch(team, enemyTrios[s]!.map(sig), gamesPer).aWinRate;
+      }
+      return sum / teamsPer;
+    };
+    const withRate = runFocal(sig);
+    const withoutRate = runFocal(stripped);
+    rows.push({ id: focal, withRate: round2(withRate), withoutRate: round2(withoutRate), delta: round2(withRate - withoutRate) });
+  }
+  return rows;
+}
+
+/** AblationRow → 按 delta 排序的可读表。 */
+export function formatAblation(rows: AblationRow[], title: string): string {
+  const sorted = [...rows].sort((a, b) => b.delta - a.delta);
+  const lines = sorted.map(
+    (r, i) =>
+      `  ${String(i + 1).padStart(2)}. ${r.id.padEnd(24)} ${(r.withRate * 100).toFixed(0).padStart(3)}% vs ${(r.withoutRate * 100).toFixed(0).padStart(3)}%  Δ ${(r.delta >= 0 ? '+' : '') + (r.delta * 100).toFixed(0)}pt`,
+  );
+  return [`=== ${title}（带 vs 不带，Δ=贡献）===`, ...lines].join('\n');
 }
 
 /** ArchetypeRow（1v1）→ 按 overall 排序的可读排名表。 */

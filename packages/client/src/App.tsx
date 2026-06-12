@@ -14,19 +14,18 @@ import { BuildEditor } from './BuildEditor.js';
 import { BattleStage } from './BattleStage.js';
 import { useBattle } from './useBattle.js';
 import { backgroundUrl, fighterSprite } from './presentation.js';
+import { useI18n, skillName, skillDesc, actionReason, type Lang } from './i18n.js';
+import { eventToLines } from './battleLog.js';
 
 const BG_STORAGE_KEY = 'battle.bg';
 
 type SideTab = 'log' | 'a' | 'b';
 
 type Step = 'select' | 'build' | 'battle';
-const STEPS: { key: Step; label: string }[] = [
-  { key: 'select', label: '① 选队' },
-  { key: 'build', label: '② 养成' },
-  { key: 'battle', label: '③ 战斗' },
-];
+const STEP_KEYS: Step[] = ['select', 'build', 'battle'];
 
 export function App() {
+  const { lang, t, toggle } = useI18n();
   const [team, setTeam] = useState<Combatant[]>(() => emptyTeam());
   const battle = useBattle();
   const [step, setStep] = useState<Step>('select');
@@ -52,7 +51,7 @@ export function App() {
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [battle.log]);
+  }, [battle.logEvents, sideTab]);
 
   const canFight = team.length >= 1; // 至少 1 人即可出战（最多 LINEUP_SIZE）
 
@@ -73,16 +72,27 @@ export function App() {
 
   return (
     <div className={`app ${step === 'battle' ? 'app-wide' : ''}`}>
+      {/* 右上角语言切换（文A 图标） */}
+      <button className="lang-toggle" onClick={toggle} title={t.langToggleTitle} aria-label={t.langToggleTitle}>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <text x="2" y="11" fontSize="11" fontWeight="700">文</text>
+          <text x="12" y="21" fontSize="11" fontWeight="700">A</text>
+          <path d="M13.5 4.5 L16 2 L16 3.6 L21 3.6 L21 5.4 L16 5.4 L16 7 Z" />
+          <path d="M10.5 19.5 L8 22 L8 20.4 L3 20.4 L3 18.6 L8 18.6 L8 17 Z" />
+        </svg>
+        <span>{lang === 'zh' ? 'EN' : '中'}</span>
+      </button>
+
       <h1>
-        意大利山海经 <span className="sub">Italian Brainrot — 3v3 D&D 队伍战</span>
+        {t.title} <span className="sub">{t.titleSub}</span>
       </h1>
 
       {/* 步骤指示条 */}
       <div className="stepbar">
-        {STEPS.map((s, i) => (
-          <span key={s.key} className={`stepbar-item ${step === s.key ? 'on' : ''}`}>
-            {s.label}
-            {i < STEPS.length - 1 && <span className="stepbar-sep">—</span>}
+        {STEP_KEYS.map((key, i) => (
+          <span key={key} className={`stepbar-item ${step === key ? 'on' : ''}`}>
+            {t.steps[i]}
+            {i < STEP_KEYS.length - 1 && <span className="stepbar-sep">—</span>}
           </span>
         ))}
       </div>
@@ -99,13 +109,13 @@ export function App() {
                 setStep('build');
               }}
             >
-              {canFight ? `下一步 · 养成 →（出战 ${team.length}）` : '至少选 1 人'}
+              {canFight ? t.selectNext(team.length) : t.needOne}
             </button>
           </div>
         </>
       ) : step === 'build' ? (
         <>
-          <div className="section-title">养成你的出战角色（加点 / 学技能）</div>
+          <div className="section-title">{t.buildTitle}</div>
           <div className="lineup-tabs">
             {team.map((m, i) => (
               <button
@@ -122,9 +132,9 @@ export function App() {
             <BuildEditor poke={team[editIdx]!} onChange={(c) => setMember(editIdx, c)} />
           )}
           <div className="controls">
-            <button onClick={() => setStep('select')}>← 返回选队</button>
+            <button onClick={() => setStep('select')}>{t.backToSelect}</button>
             <button className="fight" onClick={onStart}>
-              ⚔ 开始战斗（随机敌队）
+              {t.startFight}
             </button>
           </div>
         </>
@@ -134,9 +144,9 @@ export function App() {
           <aside className="battle-side">
             <div className="side-tabs">
               {([
-                ['log', '⚔ 战斗'],
-                ['a', '🛡 我方'],
-                ['b', '💀 敌方'],
+                ['log', t.sideTabLog],
+                ['a', t.sideTabAlly],
+                ['b', t.sideTabEnemy],
               ] as [SideTab, string][]).map(([key, label]) => (
                 <button
                   key={key}
@@ -149,16 +159,18 @@ export function App() {
             </div>
             {sideTab === 'log' ? (
               <div className="side-content side-log" ref={logRef}>
-                {battle.log.length === 0 && <div className="log-empty">战斗日志将显示在这里</div>}
-                {battle.log.map((l, i) => (
-                  <div key={i} className="log-line">
-                    {l}
-                  </div>
-                ))}
+                {battle.logEvents.length === 0 && <div className="log-empty">{t.logPlaceholder}</div>}
+                {battle.logEvents.flatMap((ev, i) =>
+                  eventToLines(ev, lang).map((l, j) => (
+                    <div key={`${i}-${j}`} className="log-line">
+                      {l}
+                    </div>
+                  )),
+                )}
               </div>
             ) : (
               <div className="side-content">
-                <TeamPanel fighters={battle.state?.teams[sideTab] ?? []} />
+                <TeamPanel fighters={battle.state?.teams[sideTab] ?? []} lang={lang} />
               </div>
             )}
           </aside>
@@ -167,9 +179,9 @@ export function App() {
           <div className="battle-main">
             <div className="stage-toolbar">
               <label className="auto-toggle">
-                背景
+                {t.bgLabel}
                 <select value={bg} onChange={(e) => pickBg(e.target.value)}>
-                  <option value="">默认</option>
+                  <option value="">{t.bgDefault}</option>
                   {bgList.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -190,17 +202,17 @@ export function App() {
               {battle.finished && (
                 <div className={`verdict-overlay ${battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'lose' : 'draw'}`}>
                   <div className="verdict-text">
-                    {battle.winner === 'a' ? '🎉 你的队伍获胜！' : battle.winner === 'b' ? '💀 你的队伍落败' : '⚖ 双方全灭'}
+                    {battle.winner === 'a' ? t.verdictWin : battle.winner === 'b' ? t.verdictLose : t.verdictDraw}
                   </div>
                 </div>
               )}
             </div>
             <ActionPanel battle={battle} />
             <div className="controls">
-              <button onClick={() => setStep('select')}>← 重新选队</button>
-              <button onClick={() => setStep('build')}>← 调整养成</button>
+              <button onClick={() => setStep('select')}>{t.reSelect}</button>
+              <button onClick={() => setStep('build')}>{t.adjustBuild}</button>
               <button className="fight" onClick={onStart}>
-                再来一场
+                {t.again}
               </button>
               <label className="auto-toggle">
                 <input
@@ -208,17 +220,17 @@ export function App() {
                   checked={battle.auto}
                   onChange={(e) => battle.setAuto(e.target.checked)}
                 />
-                自动战斗
+                {t.autoBattle}
               </label>
               <label className="auto-toggle">
-                速度
+                {t.speed}
                 <select
                   value={battle.speed}
                   onChange={(e) => battle.setSpeed(e.target.value as typeof battle.speed)}
                 >
                   <option value="1x">1x</option>
                   <option value="2x">2x</option>
-                  <option value="instant">瞬间</option>
+                  <option value="instant">{t.instant}</option>
                 </select>
               </label>
             </div>
@@ -230,13 +242,14 @@ export function App() {
 }
 
 function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
+  const { lang, t } = useI18n();
   if (!battle.state) return null;
 
   // 战斗结束：保持面板占位（不塌缩布局），胜负信息由战场蒙层展示。
   if (battle.finished) {
     return (
       <div className="action-panel">
-        <div className="ap-title">战斗结束</div>
+        <div className="ap-title">{t.battleOver}</div>
       </div>
     );
   }
@@ -246,17 +259,17 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
     return (
       <div className="action-panel">
         <div className="ap-title">
-          选择目标（{battle.pending.skill ? SKILLS[battle.pending.skill as keyof typeof SKILLS].name : '普攻'}）
+          {t.pickTarget(battle.pending.skill ? skillName(battle.pending.skill as keyof typeof SKILLS, lang) : t.basicAttackShort)}
         </div>
-        <div className="ap-hint">点击战场上高亮的角色作为目标</div>
+        <div className="ap-hint">{t.pickTargetHint}</div>
         <div className="ap-buttons">
           {battle.pending.candidates.map((r, i) => (
             <button key={i} className="ap-btn" onClick={() => battle.chooseTarget(r)}>
-              {r.team === 'a' ? '我方' : '敌方'} {r.id}
+              {r.team === 'a' ? t.ally : t.enemy} {r.id}
             </button>
           ))}
           <button className="ap-btn cancel" onClick={battle.cancelPending}>
-            取消
+            {t.cancel}
           </button>
         </div>
       </div>
@@ -268,18 +281,18 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
   const curName = cur ? archetypeName(cur.id) : '';
   // 标题按「显示态当前角色属于哪队」判断，回放中也给出有意义的回合归属，而非笼统的"回放中"。
   const title = cur?.team === 'b'
-    ? `敌方回合 · ${curName}`
+    ? t.enemyTurn(curName)
     : battle.auto
-      ? `自动战斗 · ${curName}`
+      ? t.autoTurn(curName)
       : cur?.team === 'a'
-        ? `${curName} 的回合`
-        : '你的回合';
+        ? t.turnOf(curName)
+        : t.yourTurn;
 
   return (
     <div className="action-panel">
       <div className="ap-title">
         {title}
-        <span className="ap-slots">⚡ 能量 {battle.myEnergy}</span>
+        <span className="ap-slots">{t.energyLabel} {battle.myEnergy}</span>
       </div>
       <div className="ap-buttons">
         {battle.actions.map((opt, i) => (
@@ -288,17 +301,17 @@ function ActionPanel({ battle }: { battle: ReturnType<typeof useBattle> }) {
             className={`ap-btn ${opt.usable ? '' : 'disabled'}`}
             onClick={() => opt.usable && battle.choose(opt.action)}
             disabled={!opt.usable}
-            title={tip(opt.action)}
+            title={tip(opt.action, lang, t.attackTip)}
           >
-            {label(opt.action)}
+            {label(opt.action, lang, t.basicAttack)}
             {cost(opt.action) > 0 && <small className="ap-cost">⚡×{cost(opt.action)}</small>}
-            {!waiting && !opt.usable && opt.reason && <small className="ap-reason">{opt.reason}</small>}
+            {!waiting && !opt.usable && opt.reason && <small className="ap-reason">{actionReason(opt.reason, lang)}</small>}
           </button>
         ))}
       </div>
       {waiting && !battle.auto && (
         <div className="ap-overlay">
-          <span>{cur?.team === 'b' ? '敌方行动中…' : '处理中…'}</span>
+          <span>{cur?.team === 'b' ? t.enemyActing : t.processing}</span>
         </div>
       )}
     </div>
@@ -317,14 +330,15 @@ interface SkillTip {
 }
 
 /** 左侧栏的队伍面板：每个角色一张卡（HP/能量/派生属性/技能/状态）。读显示态，随回放实时更新。 */
-function TeamPanel({ fighters }: { fighters: FighterRT[] }) {
+function TeamPanel({ fighters, lang }: { fighters: FighterRT[]; lang: Lang }) {
+  const { t } = useI18n();
   const [tip, setTip] = useState<SkillTip | null>(null);
-  if (fighters.length === 0) return <div className="log-empty">暂无数据</div>;
+  if (fighters.length === 0) return <div className="log-empty">{t.noData}</div>;
   return (
     <div className="team-panel">
       {fighters.map((f) => {
         const hpRatio = Math.max(0, Math.min(1, f.hp / f.stats.maxHp));
-        const status = f.dead ? '☠ 阵亡' : f.downed ? `⬇ 倒地（${f.downedTurns}/3）` : f.stunned > 0 ? '💫 昏迷' : '';
+        const status = f.dead ? t.statusDead : f.downed ? t.statusDowned(f.downedTurns) : f.stunned > 0 ? t.statusStunned : '';
         return (
           <div key={f.id} className={`fighter-card ${f.dead ? 'dead' : f.downed ? 'downed' : ''}`}>
             <div className="fc-head">
@@ -334,7 +348,7 @@ function TeamPanel({ fighters }: { fighters: FighterRT[] }) {
                   {f.name} <small>Lv{f.level}</small>
                 </div>
                 <div className="fc-sub">
-                  ⚡ {f.energy}/{f.stats.maxEnergy} · AC {f.stats.ac + f.acBonus} · 命中 +{f.stats.toHit} · 伤害 +{f.stats.dmgBonus}
+                  ⚡ {f.energy}/{f.stats.maxEnergy} · AC {f.stats.ac + f.acBonus} · {t.fcHit} +{f.stats.toHit} · {t.fcDmg} +{f.stats.dmgBonus}
                 </div>
               </div>
             </div>
@@ -357,16 +371,16 @@ function TeamPanel({ fighters }: { fighters: FighterRT[] }) {
                       setTip({
                         x: r.right + 10,
                         y: r.top - 6,
-                        name: def.name,
+                        name: skillName(s, lang),
                         cost: def.cost,
                         unlockLevel: def.unlockLevel,
                         sig,
-                        desc: def.desc,
+                        desc: skillDesc(s, lang),
                       });
                     }}
                     onMouseLeave={() => setTip(null)}
                   >
-                    {def.name}
+                    {skillName(s, lang)}
                     {def.cost > 0 && <small> ⚡{def.cost}</small>}
                   </span>
                 );
@@ -381,11 +395,11 @@ function TeamPanel({ fighters }: { fighters: FighterRT[] }) {
           <div className="fc-tip-head">
             <b>{tip.name}</b>
             <span className={`cost-badge ${tip.cost > 0 ? 'spell' : 'free'}`}>
-              {tip.cost > 0 ? `⚡×${tip.cost}` : '不耗能'}
+              {tip.cost > 0 ? `⚡×${tip.cost}` : t.fcNoCost}
             </span>
           </div>
           <div className="fc-tip-meta">
-            {tip.sig ? '专属签名技能 · ' : ''}Lv{tip.unlockLevel} 解锁
+            {tip.sig ? t.fcSigMeta : ''}{t.fcUnlock(tip.unlockLevel)}
           </div>
           <div className="fc-tip-desc">{tip.desc}</div>
         </div>
@@ -394,12 +408,12 @@ function TeamPanel({ fighters }: { fighters: FighterRT[] }) {
   );
 }
 
-function label(a: Action): string {
-  return a.kind === 'attack' ? '普通攻击' : SKILLS[a.skill].name;
+function label(a: Action, lang: Lang, attackLabel: string): string {
+  return a.kind === 'attack' ? attackLabel : skillName(a.skill, lang);
 }
 function cost(a: Action): number {
   return a.kind === 'attack' ? 0 : SKILLS[a.skill].cost;
 }
-function tip(a: Action): string {
-  return a.kind === 'attack' ? '1d6 + 力量 伤害（命中后按 CON 吸血）' : SKILLS[a.skill].desc;
+function tip(a: Action, lang: Lang, attackTip: string): string {
+  return a.kind === 'attack' ? attackTip : skillDesc(a.skill, lang);
 }

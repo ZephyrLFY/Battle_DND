@@ -84,7 +84,7 @@ export const PASSIVES: Record<string, Passive> = {
       const stacks = getStack(ctx.self, 'tung.hits');
       if (stacks > 0) {
         dealFlatDamage(ctx, target, stacks, '敲击');
-        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `敲击 ${stacks} 层追加伤害` });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `敲击 ${stacks} 层追加伤害`, noteEn: `Knock ×${stacks} bonus damage` });
       }
       // 叠击上限 5：封住中后期"一棒十几点"的滚雪球天花板。
       if (stacks < TUNG_STACK_CAP) bumpStack(ctx.self, 'tung.hits', 1);
@@ -94,7 +94,7 @@ export const PASSIVES: Record<string, Passive> = {
       const acted = getStack(ctx.self, ACTED_KEY);
       if (acted === 0 && getStack(ctx.self, 'tung.hits') > 0) {
         clearStack(ctx.self, 'tung.hits');
-        ctx.emit({ t: 'buff', who: ref(ctx.self), note: '一回合未出手，敲击层数清空' });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: '一回合未出手，敲击层数清空', noteEn: 'Idle for a turn — knock stacks reset' });
       }
     },
   },
@@ -110,7 +110,7 @@ export const PASSIVES: Record<string, Passive> = {
       const stacks = getStack(ctx.self, 'bombombini.gunpowder');
       if (stacks > 0) {
         dealFlatDamage(ctx, target, stacks * 2, '火药'); // 每层 +2 法术伤害
-        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `引信 ${stacks} 层引爆，追加伤害` });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `引信 ${stacks} 层引爆，追加伤害`, noteEn: `Fuse ×${stacks} detonated — bonus damage` });
       }
     },
     onCastSpell: (ctx) => {
@@ -120,17 +120,17 @@ export const PASSIVES: Record<string, Passive> = {
   },
 
   // 🐸 Trippi Troppi ——「九命怪猫」
-  // 首次将被打至倒地时不倒，改以 25% maxHp 存活并清除负面状态（整场仅一次）。
+  // 首次将被打至倒地时不倒，改以 15% maxHp 存活并清除负面状态（整场仅一次）。
   TrippiTroppi: {
     onWouldGoDown: (ctx) => {
       if (getStack(ctx.self, 'trippi.ninthUsed') > 0) return false; // 已用过 → 正常倒地
       setStack(ctx.self, 'trippi.ninthUsed', 1);
-      // 平衡补丁：1 HP → 25% maxHp 起死回生（原 1 HP 基本下一刀就死，被动形同虚设）
-      ctx.self.hp = Math.max(1, Math.floor(ctx.self.stats.maxHp * 0.25));
+      // 平衡补丁：1 HP → 25% → 15% maxHp（三轮：哈气改为命中即眩晕后，被动让位补偿）
+      ctx.self.hp = Math.max(1, Math.floor(ctx.self.stats.maxHp * 0.15));
       ctx.self.stunned = 0;
       ctx.self.hitPenaltyTurns = 0;
       ctx.self.hitPenaltyAmt = 0;
-      ctx.emit({ t: 'buff', who: ref(ctx.self), note: `九命怪猫！以 ${ctx.self.hp} HP 起死回生，清除负面` });
+      ctx.emit({ t: 'buff', who: ref(ctx.self), note: `九命怪猫！以 ${ctx.self.hp} HP 起死回生，清除负面`, noteEn: `Nine lives! Back up at ${ctx.self.hp} HP, debuffs cleared` });
       // 濒死反扑（炸毛）：固定总伤害由全体存活敌人分摊 → 1v1 全砸一人(爆发足)、3v3 摊薄(不群秒)。
       const enemyTeam = ctx.self.team === 'a' ? 'b' : 'a';
       const targets = ctx.state.teams[enemyTeam].filter((e) => !e.dead && !e.downed);
@@ -148,7 +148,7 @@ export const PASSIVES: Record<string, Passive> = {
     onTakeHit: (ctx, attacker) => {
       if (attacker.dead || attacker.downed) return;
       dealFlatDamage(ctx, attacker, 1, '尖刺');
-      ctx.emit({ t: 'buff', who: ref(ctx.self), note: '仙人掌尖刺反弹伤害' });
+      ctx.emit({ t: 'buff', who: ref(ctx.self), note: '仙人掌尖刺反弹伤害', noteEn: 'Cactus spikes reflect damage' });
     },
   },
 
@@ -196,7 +196,7 @@ export const PASSIVES: Record<string, Passive> = {
       ally.hp = Math.min(ally.stats.maxHp, ally.hp + r.total);
       if (ally.hp > before) {
         ctx.emit({ t: 'heal', who: ref(ally), roll: r, amount: ally.hp - before, hpLeft: ally.hp });
-        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `林间回响：为 ${ally.name} 回复 ${ally.hp - before}` });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `林间回响：为 ${ally.name} 回复 ${ally.hp - before}`, noteEn: `Forest echo: heals ${ally.name} for ${ally.hp - before}` });
       }
     },
   },
@@ -206,7 +206,7 @@ export const PASSIVES: Record<string, Passive> = {
     onDealDamage: (ctx, target, raw, crit) => {
       if (!crit) return;
       dealFlatDamage(ctx, target, Math.max(2, Math.floor(raw / 2)), '碾压');
-      ctx.emit({ t: 'buff', who: ref(ctx.self), note: '轮胎滚压！暴击追加碾压伤害' });
+      ctx.emit({ t: 'buff', who: ref(ctx.self), note: '轮胎滚压！暴击追加碾压伤害', noteEn: 'Tire roll! Crit deals bonus crush damage' });
     },
   },
 
@@ -255,7 +255,7 @@ export const PASSIVES: Record<string, Passive> = {
         ctx.self.energy = Math.min(ctx.self.stats.maxEnergy, ctx.self.energy + gain);
         ctx.self.stoneTurns = Math.max(ctx.self.stoneTurns, 2);
         ctx.self.stoneAmount = Math.max(ctx.self.stoneAmount, 3);
-        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `破壳！+${gain} 能量，进入战斗形态（减伤）` });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: `破壳！+${gain} 能量，进入战斗形态（减伤）`, noteEn: `Shell break! +${gain} energy, battle form (damage reduction)` });
       }
     },
   },

@@ -42,7 +42,7 @@ const BLURB: Record<string, string> = {
   ChimpanziniBananini: '🍌🐒 香蕉壳里的小猩猩，灵巧 + 变形爆发。',
 };
 
-/** 取角色一句话简介（无则空串）。 */
+/** 取角色一句话简介（中文；英文版见 i18n.tsx 的 blurb()）。 */
 export function fighterBlurb(archetypeId: string): string {
   return BLURB[archetypeId] ?? '';
 }

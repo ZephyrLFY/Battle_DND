@@ -75,15 +75,15 @@ describe('respec — 洗点', () => {
 });
 
 describe('技能学习', () => {
-  it('learnableSkills 初始 = 11 通用（自己的签名已自带、不在池里）', () => {
+  it('learnableSkills 初始 = 10 通用（自己的签名已自带、不在池里）', () => {
     // 签名出生自带占栏 → 不出现在可学池；他人签名也不出现。
-    expect(learnableSkills(newCombatant('TrippiTroppi'))).toHaveLength(11);
+    expect(learnableSkills(newCombatant('TrippiTroppi'))).toHaveLength(10);
   });
 
   it('Lv1 技能可学；学后从可学列表移除', () => {
     const p = learnSkill(newCombatant('TrippiTroppi'), 'feint'); // cost0 Lv1
     expect(p.skills).toContain('feint');
-    expect(learnableSkills(p)).toHaveLength(10);
+    expect(learnableSkills(p)).toHaveLength(9);
   });
 
   it('未达解锁等级不可学', () => {
@@ -107,9 +107,9 @@ describe('技能学习', () => {
     p = learnSkill(p, 'precise_aim');
     expect(p.skills).toHaveLength(4);
     expect(skillBarFull(p)).toBe(true);
-    expect(canLearn(p, 'stun_strike')).toBe(false);
-    expect(learnBlockReason(p, 'stun_strike')).toContain('技能栏已满');
-    expect(() => learnSkill(p, 'stun_strike')).toThrow();
+    expect(canLearn(p, 'flurry')).toBe(false);
+    expect(learnBlockReason(p, 'flurry')).toContain('技能栏已满');
+    expect(() => learnSkill(p, 'flurry')).toThrow();
   });
 
   it('卸下（非签名）技能后腾出栏位可再学', () => {
@@ -119,7 +119,7 @@ describe('技能学习', () => {
     p = learnSkill(p, 'precise_aim'); // 满（含签名 4 个）
     p = forgetSkill(p, 'precise_aim');
     expect(p.skills).not.toContain('precise_aim');
-    expect(canLearn(p, 'stun_strike')).toBe(true);
+    expect(canLearn(p, 'flurry')).toBe(true);
   });
 
   it('签名技能不可卸（forgetSkill 拒绝）', () => {
