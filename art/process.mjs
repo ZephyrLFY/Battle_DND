@@ -14,9 +14,9 @@
  *   画布尺寸不一致时回退为各自裁切（会警告，切图可能跳位）。
  *
  * 战场背景：
- *   输入：art/raw/bg/<名字>.{png,webp,jpg,jpeg}
- *   输出：packages/client/public/backgrounds/<名字>.webp（1760×880 cover 裁切 + 压暗去饱和 + 轻模糊，
- *         保证角色可读性）+ manifest.json（前端下拉框据此列出可选背景）
+ *   输入：art/raw/bg/<名字>.{png,webp,jpg,jpeg}（建议 16:9、宽 ≥2480；不足会被放大变软）
+ *   输出：packages/client/public/backgrounds/<名字>.webp（2480×1400 cover 裁切 + 压暗去饱和，
+ *         覆盖 Retina 物理像素）+ manifest.json（前端下拉框据此列出可选背景）
  *
  * 用法：
  *   npm run art                       处理 raw/ 全部角色图 + raw/bg/ 全部背景
@@ -43,8 +43,8 @@ const SIZE = 1024; // 角色输出正方形边长
 const PADDING = 0.92; // 主体占画布比例（四周留 8% 透明边，避免贴边）
 const TARGET_LUM = 110; // 亮度归一目标（主体平均亮度，0~255；全 roster 实测中位 ≈100-110）
 const TARGET_AREA_RATIO = 0.26; // 体量归一目标（主体占输出画布面积比，roster 均值 ≈26%）
-const BG_W = 1760; // 背景输出尺寸（战场 880×440 的 2x）
-const BG_H = 880;
+const BG_W = 2480; // 背景输出尺寸 = 战场 1240×700 的 2x（覆盖 Retina：逻辑 × DPR2 的物理像素）
+const BG_H = 1400;
 const EXTS = new Set(['.png', '.webp', '.jpg', '.jpeg']);
 const POSES = new Set(['attack', 'hit', 'downed']); // idle 无后缀
 const DEFAULT_TOLERANCE = 32; // 纯色去背容差（颜色距离阈值）
@@ -236,22 +236,22 @@ async function processCharacter(id, files, opts) {
   }
 }
 
-/** 处理战场背景：cover 裁切 + 压暗/去饱和/轻模糊（保证角色可读性），并写 manifest.json。 */
+/** 处理战场背景：cover 裁切 + 温和压暗/去饱和（保证角色可读性），并写 manifest.json。 */
 async function processBackgrounds() {
   if (!existsSync(RAW_BG_DIR)) return;
   const files = (await readdir(RAW_BG_DIR)).filter((f) => EXTS.has(path.extname(f).toLowerCase()));
   if (files.length === 0) return;
   await mkdir(OUT_BG_DIR, { recursive: true });
-  console.log(`处理 ${files.length} 张背景 → ${BG_W}×${BG_H} WebP（压暗 + 轻模糊）：`);
+  console.log(`处理 ${files.length} 张背景 → ${BG_W}×${BG_H} WebP（温和压暗 + 去饱和）：`);
   const names = [];
   for (const f of files) {
     const name = path.basename(f, path.extname(f));
     try {
       await sharp(path.join(RAW_BG_DIR, f))
         .resize(BG_W, BG_H, { fit: 'cover', position: 'centre' })
-        .modulate({ brightness: 0.72, saturation: 0.85 }) // 压暗去饱和：让前景角色跳出来
-        .blur(1.2) // 轻模糊 ≈ 景深
-        .webp({ quality: 82 })
+        .modulate({ brightness: 0.84, saturation: 0.92 }) // 温和压暗去饱和：让前景角色跳出来（0.72 反馈过暗，回调）
+        // 不再加 blur：HiDPI 下输出已是 1:1 物理像素，景深感交给生成时的构图
+        .webp({ quality: 85 })
         .toFile(path.join(OUT_BG_DIR, `${name}.webp`));
       names.push(name);
       console.log(`  ✓ bg/${f} → backgrounds/${name}.webp`);

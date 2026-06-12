@@ -11,6 +11,10 @@
 
 ## 快速开始
 
+**在线试玩**：https://zephyrlfy.github.io/Battle_Pokemon/ （master 每次合并自动部署）
+
+本地开发：
+
 ```bash
 npm install
 npm run dev:client   # 启动游戏 → http://localhost:5173

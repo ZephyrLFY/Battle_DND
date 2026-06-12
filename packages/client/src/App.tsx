@@ -14,7 +14,7 @@ import { BuildEditor } from './BuildEditor.js';
 import { BattleStage } from './BattleStage.js';
 import { useBattle } from './useBattle.js';
 import { backgroundUrl, fighterSprite } from './presentation.js';
-import { useI18n, skillName, skillDesc, actionReason, type Lang } from './i18n.js';
+import { useI18n, skillName, skillDesc, actionReason, bgName, type Lang } from './i18n.js';
 import { eventToLines } from './battleLog.js';
 
 const BG_STORAGE_KEY = 'battle.bg';
@@ -38,7 +38,7 @@ export function App() {
   const [bgList, setBgList] = useState<string[]>([]);
   const [bg, setBg] = useState<string>(() => localStorage.getItem(BG_STORAGE_KEY) ?? '');
   useEffect(() => {
-    fetch('/backgrounds/manifest.json')
+    fetch(`${import.meta.env.BASE_URL}backgrounds/manifest.json`)
       .then((r) => (r.ok ? r.json() : []))
       .then((names: unknown) => {
         if (Array.isArray(names)) setBgList(names.filter((n): n is string => typeof n === 'string'));
@@ -219,7 +219,7 @@ export function App() {
                   <option value="">{t.bgDefault}</option>
                   {bgList.map((name) => (
                     <option key={name} value={name}>
-                      {name}
+                      {bgName(name, lang)}
                     </option>
                   ))}
                 </select>

@@ -123,7 +123,7 @@ const zh = {
   statusStunned: '💫 昏迷',
   // 战场 canvas
   stageEmpty: '配好队伍后点「开始战斗」',
-  initOrder: '先攻顺序 ▶',
+  initOrder: '行动顺序 ▶',
   // 语言/主题切换
   langToggleTitle: 'Switch to English',
   themeToLight: '切换到日间模式',
@@ -221,7 +221,7 @@ const en: Dict = {
   statusDowned: (n: number) => `⬇ Down (${n}/3)`,
   statusStunned: '💫 Stunned',
   stageEmpty: 'Pick your team, then hit "Start battle"',
-  initOrder: 'Initiative ▶',
+  initOrder: 'Turn Order ▶',
   langToggleTitle: '切换为中文',
   themeToLight: 'Switch to light mode',
   themeToDark: 'Switch to dark mode',
@@ -381,6 +381,69 @@ export function passiveInfo(archetypeId: string, lang: Lang): { name: string; de
   const p = PASSIVE_INFO[archetypeId];
   if (!p) return undefined;
   return lang === 'en' ? { name: p.nameEn, desc: p.descEn } : { name: p.name, desc: p.desc };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 战场背景显示名（manifest 里是文件名；中文在这里映射，英文显示首字母大写的文件名）
+// 新增背景图后在此加一条 `文件名: '中文名'`，没加的回退显示原文件名。
+// ─────────────────────────────────────────────────────────────────────────
+
+const BG_NAME_ZH: Record<string, string> = {
+  // PROMPTS.md 建议场景（生成图用这些文件名时自动生效）
+  colosseum: '斗兽场',
+  piazza: '意式广场',
+  kitchen: '巨物厨房',
+  beach: '地中海海滩',
+  void: '梦核虚空',
+  // 实拍背景
+  Hobbit: '霍比屯',
+  Sydney: '悉尼',
+  Versailles: '凡尔赛宫',
+  bali: '巴厘岛',
+  balisunset: '巴厘岛日落',
+  chinasuzhou: '苏州园林',
+  colorfuldanxia: '七彩丹霞',
+  deathstrand: '死亡搁浅',
+  deathstrandlake: '死亡搁浅湖',
+  desert: '沙漠',
+  dolomiti: '多洛米蒂',
+  elchalten: '埃尔查尔滕',
+  firenze: '佛罗伦萨',
+  fitzroy: '菲茨罗伊峰',
+  funes: '富内斯山谷',
+  goldcoast: '黄金海岸',
+  hongkong: '香港',
+  kyotogreen: '京都绿意',
+  milfordsound: '米尔福德峡湾',
+  newzealand: '新西兰',
+  paine: '百内',
+  sakura: '樱花',
+  singapore: '新加坡',
+  zykinthos: '扎金索斯',
+};
+
+/** 英文显示名覆盖：文件名是拼接词/不规范拼写时在这里改写；没有的回退首字母大写。 */
+const BG_NAME_EN: Record<string, string> = {
+  balisunset: 'Bali Sunset',
+  chinasuzhou: 'Suzhou',
+  colorfuldanxia: 'Rainbow Danxia',
+  deathstrand: 'Death Stranding',
+  deathstrandlake: 'Death Stranding Lake',
+  elchalten: 'El Chaltén',
+  fitzroy: 'Fitz Roy',
+  goldcoast: 'Gold Coast',
+  hongkong: 'Hong Kong',
+  kyotogreen: 'Kyoto Green',
+  milfordsound: 'Milford Sound',
+  newzealand: 'New Zealand',
+  paine: 'Torres del Paine',
+  zykinthos: 'Zakynthos',
+};
+
+/** 背景文件名 → 当前语言的显示名。 */
+export function bgName(name: string, lang: Lang): string {
+  if (lang === 'zh') return BG_NAME_ZH[name] ?? name;
+  return BG_NAME_EN[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 /** 被动/技能 flat 伤害的骰子 spec 中文标签 → 英文（出现在战斗日志的伤害行）。 */

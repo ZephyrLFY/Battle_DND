@@ -25,14 +25,17 @@ export interface FloatFx {
   at: number;
 }
 
+/** 部署基础路径（GitHub Pages 等子路径部署时 ≠ '/'）。Vite 注入，恒以 '/' 结尾。 */
+export const BASE = import.meta.env.BASE_URL;
+
 /** 角色 sprite 路径（public 下，缺图时战场回退 idle → 圆形占位）。 */
 export function fighterSprite(archetypeId: string, pose: Pose = 'idle'): string {
-  return pose === 'idle' ? `/fighters/${archetypeId}.webp` : `/fighters/${archetypeId}.${pose}.webp`;
+  return pose === 'idle' ? `${BASE}fighters/${archetypeId}.webp` : `${BASE}fighters/${archetypeId}.${pose}.webp`;
 }
 
 /** 战场背景图路径（public/backgrounds 下，由 manifest.json 列出可用项）。 */
 export function backgroundUrl(name: string): string {
-  return `/backgrounds/${name}.webp`;
+  return `${BASE}backgrounds/${name}.webp`;
 }
 
 /**

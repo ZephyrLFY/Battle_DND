@@ -51,7 +51,7 @@ let metaState: 'idle' | 'loading' | 'done' = 'idle';
 function ensureMeta(onReady: () => void): void {
   if (metaState !== 'idle') return;
   metaState = 'loading';
-  fetch('/fighters/meta.json')
+  fetch(`${import.meta.env.BASE_URL}fighters/meta.json`)
     .then((r) => (r.ok ? r.json() : {}))
     .then((m: unknown) => {
       if (m && typeof m === 'object') spriteMeta = m as Record<string, { scale?: number }>;
@@ -306,10 +306,13 @@ function drawInitiativeBar(
   onSpriteReady: () => void,
 ) {
   const order = state.order;
+  // 标签与头像统一垂直居中于先攻条区域（INIT_BAR_H）
   ctx.fillStyle = '#8b98ad';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(label, 10, 18);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, 10, INIT_BAR_H / 2);
+  ctx.textBaseline = 'alphabetic'; // 还原默认，避免影响后续文字绘制
 
   const startX = 100;
   const r = 20;
@@ -318,7 +321,7 @@ function drawInitiativeBar(
     const f = find(state, ref);
     if (!f) return;
     const x = startX + step * i + r;
-    const y = INIT_BAR_H / 2 + 4;
+    const y = INIT_BAR_H / 2;
     const isCur = cur && cur.id === f.id && cur.team === f.team;
     // 朝向与战场一致：a 队（我方）朝右、b 队（敌方）朝左 → 以朝向区分敌我
     const want: 'left' | 'right' = f.team === 'a' ? 'right' : 'left';
