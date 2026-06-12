@@ -316,7 +316,7 @@ button.fight {
 /* 背景选择：浮在战场右上角的 HUD 胶囊（毛玻璃 + 自定义箭头） */
 .bg-picker {
   position: absolute;
-  top: 10px;
+  top: 16px; /* 垂直居中于先攻条区域（64px 高，胶囊约 31px） */
   right: 12px;
   z-index: 6;
   display: inline-flex;
