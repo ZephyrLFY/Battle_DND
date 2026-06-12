@@ -25,6 +25,7 @@ import {
   type AbilityKey,
   type SkillId,
 } from '@italian-brainrot/shared';
+import { fighterPassive } from './presentation.js';
 
 export function BuildEditor({
   poke,
@@ -120,8 +121,25 @@ export function BuildEditor({
         </div>
       </div>
 
-      {/* 右列：技能池 */}
+      {/* 右列：被动 + 技能池 */}
       <div className="build-col build-col-right">
+        {/* 天生被动：不占技能栏、不可选——配技能前先让玩家看到它 */}
+        {(() => {
+          const p = fighterPassive(poke.archetypeId);
+          if (!p) return null;
+          return (
+            <>
+              <div className="skills-title">天生被动（不占技能栏）</div>
+              <div className="passive-card">
+                <div className="skill-head">
+                  <span className="skill-name">✨ {p.name}</span>
+                  <span className="cost-badge passive">被动</span>
+                </div>
+                <div className="skill-desc">{p.desc}</div>
+              </div>
+            </>
+          );
+        })()}
         <div className="skills">
           <div className="skills-title">
             技能池（按解锁等级排序）

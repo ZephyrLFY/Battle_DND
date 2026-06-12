@@ -13,6 +13,18 @@ export type PoseMap = Record<string, 'attack' | 'hit'>;
 /** 突进表：`攻击者 key` → `目标 key`。单体攻击时攻击者滑到目标面前；AOE/全体/自身原地。 */
 export type LungeMap = Record<string, string>;
 
+/** 浮动战斗文字（跳字）：useBattle 按回放事件生成，BattleStage 上浮渐隐绘制。 */
+export interface FloatFx {
+  /** 自增 id（渲染 key + 横向错位用）。 */
+  id: number;
+  /** 目标角色 `${team}:${id}`。 */
+  key: string;
+  text: string;
+  kind: 'damage' | 'crit' | 'heal' | 'miss';
+  /** 出生时间（performance.now()）。 */
+  at: number;
+}
+
 /** 角色 sprite 路径（public 下，缺图时战场回退 idle → 圆形占位）。 */
 export function fighterSprite(archetypeId: string, pose: Pose = 'idle'): string {
   return pose === 'idle' ? `/fighters/${archetypeId}.webp` : `/fighters/${archetypeId}.${pose}.webp`;
@@ -45,6 +57,66 @@ const BLURB: Record<string, string> = {
 /** 取角色一句话简介（无则空串）。 */
 export function fighterBlurb(archetypeId: string): string {
   return BLURB[archetypeId] ?? '';
+}
+
+/**
+ * 角色被动的展示文案（逻辑在 shared/passives.ts，这里只管 UI 描述；与 CHARACTERS.md 同步）。
+ * 养成页用：被动天生自带、不占技能栏，玩家配技能前应该先看到它。
+ */
+const PASSIVE_INFO: Record<string, { name: string; desc: string }> = {
+  TungSahur: {
+    name: '不眠的梆子',
+    desc: '普攻命中叠 1 层「敲击」（每层伤害 +1，最多 3 层）；一整回合没出手则清空。连续敲打，越打越狠。',
+  },
+  CappuccinoAssassino: {
+    name: '咖啡与舞伴',
+    desc: '队伍中 Ballerina Cappuccina 存活时全属性 ×1.3；BC 阵亡后 ×1.5（为爱复仇）；攻击敌方 BC 时伤害 ×0.9（下不去手）。',
+  },
+  BombardiroCrocodilo: {
+    name: '装甲蒙皮',
+    desc: '常驻减伤 1（每次受击减免 1 点伤害）。',
+  },
+  LiriliLarila: {
+    name: '仙人掌尖刺',
+    desc: '常驻反伤：被命中时反弹 1 点伤害给攻击者。',
+  },
+  BrrBrrPatapim: {
+    name: '林间回响',
+    desc: '任意友方释放增益/治疗类技能时，免费为该友方回复 1d4（森林的回声）。',
+  },
+  BombombiniGusini: {
+    name: '引信',
+    desc: '每次受击叠 1 层「火药」；下一个耗能技能每层 +2 伤害，释放后清空（一次性引爆）。',
+  },
+  TrippiTroppi: {
+    name: '九命怪猫',
+    desc: '首次被打至倒地时不倒，改以 25% 最大生命存活并清除负面，同时炸毛反扑（固定总伤由存活敌人分摊）。整场仅一次。',
+  },
+  BonecaAmbalabu: {
+    name: '轮胎滚压',
+    desc: '普攻暴击时额外造成一段碾压伤害。',
+  },
+  FrigoCamelo: {
+    name: '冷藏续航',
+    desc: '每回合开始回复 1d6 生命。',
+  },
+  TralaleroTralala: {
+    name: '三足疾行',
+    desc: '先攻 +5（大概率先手，但不绝对）。',
+  },
+  BallerinaCappuccina: {
+    name: '为舞伴起舞',
+    desc: '自身释放的所有增益效果（含治疗术）对 Cappuccino Assassino 效果增强。',
+  },
+  ChimpanziniBananini: {
+    name: '香蕉外壳',
+    desc: 'HP 首次跌破 75% / 50% / 25% 各破壳一次：每次 +3 能量并获得当回合减伤。',
+  },
+};
+
+/** 取角色被动的名称与描述（无则 undefined）。 */
+export function fighterPassive(archetypeId: string): { name: string; desc: string } | undefined {
+  return PASSIVE_INFO[archetypeId];
 }
 
 /**

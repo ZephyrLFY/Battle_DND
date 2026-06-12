@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   SKILLS,
   generateEnemyTeam,
@@ -32,7 +32,6 @@ export function App() {
   const [step, setStep] = useState<Step>('select');
   const [editIdx, setEditIdx] = useState(0); // 养成步：正在调第几个出战角色
   const [sideTab, setSideTab] = useState<SideTab>('log'); // 战斗页左侧栏：日志/我方/敌方
-  const logRef = useRef<HTMLDivElement>(null);
 
   // 战场背景：manifest.json 列出可选项（由美术管线生成）；'' = 默认渐变。选择记住在本地。
   const [bgList, setBgList] = useState<string[]>([]);
@@ -49,10 +48,6 @@ export function App() {
     setBg(name);
     localStorage.setItem(BG_STORAGE_KEY, name);
   };
-
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [battle.log]);
 
   const canFight = team.length >= 1; // 至少 1 人即可出战（最多 LINEUP_SIZE）
 
@@ -130,44 +125,53 @@ export function App() {
         </>
       ) : (
         <div className="battle-layout">
-          {/* 左侧信息栏：战斗日志 / 我方 / 敌方 */}
+          {/* 左侧信息栏：战斗日志 / 我方 / 敌方。
+              内层 absolute 填充：内容不撑高页面，高度恒随右列，内部滚动。 */}
           <aside className="battle-side">
-            <div className="side-tabs">
-              {([
-                ['log', '⚔ 战斗'],
-                ['a', '🛡 我方'],
-                ['b', '💀 敌方'],
-              ] as [SideTab, string][]).map(([key, label]) => (
-                <button
-                  key={key}
-                  className={`side-tab ${sideTab === key ? 'on' : ''}`}
-                  onClick={() => setSideTab(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {sideTab === 'log' ? (
-              <div className="side-content side-log" ref={logRef}>
-                {battle.log.length === 0 && <div className="log-empty">战斗日志将显示在这里</div>}
-                {battle.log.map((l, i) => (
-                  <div key={i} className="log-line">
-                    {l}
-                  </div>
+            <div className="side-inner">
+              <div className="side-tabs">
+                {([
+                  ['log', '⚔ 战斗'],
+                  ['a', '🛡 我方'],
+                  ['b', '💀 敌方'],
+                ] as [SideTab, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={`side-tab ${sideTab === key ? 'on' : ''}`}
+                    onClick={() => setSideTab(key)}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
-            ) : (
-              <div className="side-content">
-                <TeamPanel fighters={battle.state?.teams[sideTab] ?? []} />
-              </div>
-            )}
+              {sideTab === 'log' ? (
+                <div className="side-content side-log">
+                  {battle.log.length === 0 && <div className="log-empty">战斗日志将显示在这里</div>}
+                  {/* 倒序：最新一条在最上面，无需自动滚动 */}
+                  {battle.log.map((l, i) => (
+                    <div key={i} className="log-line">
+                      {l}
+                    </div>
+                  )).reverse()}
+                </div>
+              ) : (
+                <div className="side-content">
+                  <TeamPanel fighters={battle.state?.teams[sideTab] ?? []} />
+                </div>
+              )}
+            </div>
           </aside>
 
           {/* 右侧：战场 + 操作面板 */}
           <div className="battle-main">
-            <div className="stage-toolbar">
-              <label className="auto-toggle">
-                背景
+            <div className="stage-wrap">
+              {/* 背景选择：浮在战场右上角的 HUD 胶囊 */}
+              <div className="bg-picker" title="战场背景">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <circle cx="8.5" cy="10" r="1.6" fill="currentColor" stroke="none" />
+                  <path d="M5 17l4.5-4.5 3 3L17 11l2 2" />
+                </svg>
                 <select value={bg} onChange={(e) => pickBg(e.target.value)}>
                   <option value="">默认</option>
                   {bgList.map((name) => (
@@ -176,15 +180,15 @@ export function App() {
                     </option>
                   ))}
                 </select>
-              </label>
-            </div>
-            <div className="stage-wrap">
+                <span className="bg-picker-arrow">▾</span>
+              </div>
               <BattleStage
                 state={battle.state}
                 candidates={battle.pending?.candidates}
                 onPickTarget={battle.chooseTarget}
                 poses={battle.poses}
                 lunges={battle.lunges}
+                floats={battle.floats}
                 background={bg ? backgroundUrl(bg) : null}
               />
               {battle.finished && (

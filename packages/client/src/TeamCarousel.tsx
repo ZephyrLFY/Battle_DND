@@ -11,12 +11,13 @@ import { useState } from 'react';
 import {
   ARCHETYPE_IDS,
   LINEUP_SIZE,
+  SKILLS,
   archetypeName,
   newCombatant,
   abilitiesOf,
   type Combatant,
 } from '@italian-brainrot/shared';
-import { fighterSprite, fighterBlurb } from './presentation.js';
+import { fighterSprite, fighterBlurb, fighterPassive } from './presentation.js';
 
 export function TeamCarousel({
   team,
@@ -46,7 +47,10 @@ export function TeamCarousel({
   const removeId = (id: string) => onChange(team.filter((m) => m.archetypeId !== id));
   const toggleCenter = () => (inTeam ? removeId(centerId) : addCenter());
 
-  const ab = abilitiesOf(newCombatant(centerId)); // 1 级天赋属性
+  const center = newCombatant(centerId);
+  const ab = abilitiesOf(center); // 1 级天赋属性
+  const sigId = center.skills[0]; // 签名技能（出生自带）
+  const passive = fighterPassive(centerId);
 
   return (
     <div className="carousel">
@@ -55,11 +59,33 @@ export function TeamCarousel({
         <small className="carousel-hint">（1–{LINEUP_SIZE} 人，敌队等量）</small>
       </div>
 
-      {/* 属性（最上） */}
+      {/* 属性（最上）+ 技能速览 (i) */}
       <div className="carousel-stats">
         <span className="stat str">STR {ab.str}</span>
         <span className="stat dex">DEX {ab.dex}</span>
         <span className="stat con">CON {ab.con}</span>
+        <span className="info-i" aria-label="技能介绍">
+          i
+          <div className="info-tip">
+            {sigId && (
+              <div className="info-block">
+                <div className="info-title">
+                  ✦ 签名技能 · {SKILLS[sigId].name}
+                  <span className={`cost-badge ${SKILLS[sigId].cost === 0 ? 'free' : 'spell'}`}>
+                    {SKILLS[sigId].cost === 0 ? '不耗能' : `⚡×${SKILLS[sigId].cost}`}
+                  </span>
+                </div>
+                <div className="info-desc">{SKILLS[sigId].desc}</div>
+              </div>
+            )}
+            {passive && (
+              <div className="info-block">
+                <div className="info-title">✨ 天生被动 · {passive.name}</div>
+                <div className="info-desc">{passive.desc}</div>
+              </div>
+            )}
+          </div>
+        </span>
       </div>
 
       {/* 简介（属性与角色之间） */}
@@ -124,7 +150,6 @@ export function TeamCarousel({
           return (
             <div key={i} className="slot filled" title={archetypeName(m.archetypeId)}>
               <img src={fighterSprite(m.archetypeId)} alt={archetypeName(m.archetypeId)} />
-              <span className="slot-name">{archetypeName(m.archetypeId)}</span>
               <button className="slot-remove" onClick={() => removeId(m.archetypeId)} aria-label="移除">×</button>
             </div>
           );

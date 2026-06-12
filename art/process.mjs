@@ -26,7 +26,7 @@
  *
  * 缺图不报错——战场缺姿势回退 idle，缺 idle 回退圆形占位，无背景回退默认渐变。
  */
-import { readdir, mkdir, writeFile } from 'node:fs/promises';
+import { readdir, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +41,8 @@ const OUT_BG_DIR = path.join(ROOT, 'packages', 'client', 'public', 'backgrounds'
 
 const SIZE = 1024; // 角色输出正方形边长
 const PADDING = 0.92; // 主体占画布比例（四周留 8% 透明边，避免贴边）
+const TARGET_LUM = 110; // 亮度归一目标（主体平均亮度，0~255；全 roster 实测中位 ≈100-110）
+const TARGET_AREA_RATIO = 0.26; // 体量归一目标（主体占输出画布面积比，roster 均值 ≈26%）
 const BG_W = 1760; // 背景输出尺寸（战场 880×440 的 2x）
 const BG_H = 880;
 const EXTS = new Set(['.png', '.webp', '.jpg', '.jpeg']);
@@ -101,31 +103,47 @@ async function alreadyTransparent(src) {
   return corners.every(([x, y]) => data[at(x, y)] < 10);
 }
 
-/** 扫描 alpha 通道求非透明包围盒。返回 {left,top,width,height,imgW,imgH}；全透明返回 null。 */
+/**
+ * 扫描 alpha 通道：非透明包围盒 + 不透明像素数 + 主体平均亮度。
+ * 返回 {left,top,width,height,imgW,imgH,opaque,meanLum}；全透明返回 null。
+ */
 async function alphaBBox(input) {
   const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   let minX = width, minY = height, maxX = -1, maxY = -1;
+  let opaque = 0, sumLum = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * channels + 3] > ALPHA_THRESHOLD) {
+      const i = (y * width + x) * channels;
+      if (data[i + 3] > ALPHA_THRESHOLD) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+        // 主体统计只取基本不透明的像素（>200），排除特效粒子拖低均值
+        if (data[i + 3] > 200) {
+          opaque++;
+          sumLum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+        }
       }
     }
   }
   if (maxX < 0) return null;
-  return { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1, imgW: width, imgH: height };
+  return {
+    left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1,
+    imgW: width, imgH: height,
+    opaque, meanLum: opaque > 0 ? sumLum / opaque : 0,
+  };
 }
 
-/** 裁切 bbox → 等比缩放进 box → SIZE 画布居中 → 写 WebP。 */
-async function renderSprite(input, bbox, outFile) {
+/** 裁切 bbox → [可选亮度校正] → 等比缩放进 box → SIZE 画布居中 → 写 WebP。 */
+async function renderSprite(input, bbox, outFile, brightness = 1) {
   const box = Math.round(SIZE * PADDING);
-  const cropped = await sharp(input)
+  let pipe = sharp(input)
     .ensureAlpha()
-    .extract({ left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height })
+    .extract({ left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height });
+  if (brightness !== 1) pipe = pipe.modulate({ brightness });
+  const cropped = await pipe
     .resize(box, box, { fit: 'inside', withoutEnlargement: false })
     .toBuffer();
   await sharp({
@@ -184,10 +202,37 @@ async function processCharacter(id, files, opts) {
     console.warn(`  ⚠ ${id}: 各姿势画布尺寸不一致，回退各自裁切（战斗切图可能跳位；建议用同分辨率生成变体）`);
   }
 
+  // 亮度归一（质感）：主体平均亮度向 TARGET_LUM 温和收敛，幅度 clamp ±20%/+25%。
+  // 系数按角色算一次（以 idle 为准），所有姿势共用 → 姿势间光照一致。
+  const idleItem = items.find((it) => it.pose === 'idle') ?? items[0];
+  let brightness = idleItem.bbox.meanLum > 0 ? TARGET_LUM / idleItem.bbox.meanLum : 1;
+  brightness = Math.max(0.8, Math.min(1.25, brightness));
+  if (Math.abs(brightness - 1) < 0.06) brightness = 1; // 已接近目标带 → 不动，避免无谓重采样
+  if (brightness !== 1) console.log(`  · ${id}: 亮度校正 ×${brightness.toFixed(2)}（主体均亮 ${idleItem.bbox.meanLum.toFixed(0)} → ~${TARGET_LUM}）`);
+
   for (const it of items) {
     const outName = it.pose === 'idle' ? `${id}.webp` : `${id}.${it.pose}.webp`;
-    await renderSprite(it.input, unionBox ?? it.bbox, path.join(OUT_DIR, outName));
+    await renderSprite(it.input, unionBox ?? it.bbox, path.join(OUT_DIR, outName), brightness);
     console.log(`  ✓ ${it.file} → fighters/${outName}${unionBox ? '（锚点对齐）' : ''}`);
+  }
+
+  // 体量归一（meta.json，运行时用）：横构图角色在等比 contain 后视觉体量偏小，
+  // 按"主体在输出画布中的面积占比"算每角色的绘制缩放系数，战场按系数放大/缩小绘制框。
+  // 只在处理到 idle 时更新（系数对该角色所有姿势统一生效——绘制框是按角色的）。
+  if (items.some((it) => it.pose === 'idle')) {
+    const crop = unionBox ?? idleItem.bbox;
+    const fit = Math.round(SIZE * PADDING) / Math.max(crop.width, crop.height); // contain 缩放比
+    const areaRatio = (idleItem.bbox.opaque * fit * fit) / (SIZE * SIZE); // 主体占输出画布面积比
+    let scale = Math.sqrt(TARGET_AREA_RATIO / Math.max(0.01, areaRatio));
+    scale = Math.round(Math.max(0.85, Math.min(1.35, scale)) * 100) / 100;
+    const metaPath = path.join(OUT_DIR, 'meta.json');
+    let meta = {};
+    if (existsSync(metaPath)) {
+      try { meta = JSON.parse(await readFile(metaPath, 'utf8')); } catch { /* 损坏则重建 */ }
+    }
+    meta[id] = { scale };
+    await writeFile(metaPath, JSON.stringify(meta, null, 2));
+    console.log(`  · ${id}: 体量系数 ${scale}（主体占比 ${(areaRatio * 100).toFixed(0)}% → 目标 ${TARGET_AREA_RATIO * 100}%）→ fighters/meta.json`);
   }
 }
 

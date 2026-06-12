@@ -89,10 +89,10 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   revive: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || !t.downed) return; // 仅对倒地者生效
-    const r = roll(ctx.rng, '1d8');
+    // 平衡补丁：1d8 → 15% maxHp（原版平均 4.5 血，复活即被一刀带走）
     t.downed = false;
     t.downedTurns = 0;
-    t.hp = Math.min(t.stats.maxHp, Math.max(1, r.total));
+    t.hp = Math.min(t.stats.maxHp, Math.max(1, Math.floor(t.stats.maxHp * 0.15)));
     ctx.emit({ t: 'revive', who: ref(t), hpLeft: t.hp });
   },
   firestorm: (ctx) => {

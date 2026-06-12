@@ -176,7 +176,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     targetType: 'one_ally',
     cost: 3,
     unlockLevel: 11,
-    desc: '拉起一个倒地友方，回复其 1d8 生命（仅对倒地者生效）。',
+    desc: '拉起一个倒地友方，回复其 15% 最大生命（仅对倒地者生效）。', // 平衡补丁：1d8 复活即倒
   },
 
   // ── 角色签名技能（专属，占技能栏；只有对应 archetype 能学）──
