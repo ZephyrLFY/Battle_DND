@@ -31,7 +31,7 @@ const LANG_KEY = 'ui.lang';
 
 const zh = {
   title: '意大利山海经',
-  titleSub: 'Italian Brainrot — 3v3 D&D 队伍战',
+  titleSub: '3v3 D&D 队伍战',
   steps: ['① 选队', '② 养成', '③ 战斗'] as readonly string[],
   // 选队
   pickTeam: '选择你的出战队伍',
@@ -66,6 +66,13 @@ const zh = {
   infoSig: '✦ 签名技能',
   infoPassive: '✨ 天生被动',
   infoAria: '技能介绍',
+  attrHelpAria: '属性说明',
+  strTitle: '力量 STR',
+  strHelp: '决定攻击的命中加值与伤害加值——输出核心。',
+  dexTitle: '敏捷 DEX',
+  dexHelp: '决定护甲 AC（更难被命中，且闪避敌方攻击会回 1 点能量）与先攻（出手顺序）。',
+  conTitle: '体质 CON',
+  conHelp: '决定生命上限与吸血比例（普攻命中后按造成伤害的比例回血）。',
   barFull: ' · 技能栏已满',
   noLearnable: '已无可学技能',
   unlocked: '已解锁',
@@ -117,8 +124,10 @@ const zh = {
   // 战场 canvas
   stageEmpty: '配好队伍后点「开始战斗」',
   initOrder: '先攻顺序 ▶',
-  // 语言切换
+  // 语言/主题切换
   langToggleTitle: 'Switch to English',
+  themeToLight: '切换到日间模式',
+  themeToDark: '切换到夜间模式',
 };
 
 type Dict = typeof zh;
@@ -158,6 +167,13 @@ const en: Dict = {
   infoSig: '✦ Signature skill',
   infoPassive: '✨ Innate passive',
   infoAria: 'Kit overview',
+  attrHelpAria: 'Attribute guide',
+  strTitle: 'STR · Strength',
+  strHelp: 'Determines your to-hit bonus and damage bonus — the core offensive stat.',
+  dexTitle: 'DEX · Dexterity',
+  dexHelp: 'Determines AC (harder to hit — dodging an enemy attack also grants 1 energy) and initiative (turn order).',
+  conTitle: 'CON · Constitution',
+  conHelp: 'Determines max HP and lifesteal rate (heal a portion of damage dealt on basic hits).',
   barFull: ' · Skill bar full',
   noLearnable: 'Nothing left to learn',
   unlocked: 'Unlocked',
@@ -207,6 +223,8 @@ const en: Dict = {
   stageEmpty: 'Pick your team, then hit "Start battle"',
   initOrder: 'Initiative ▶',
   langToggleTitle: '切换为中文',
+  themeToLight: 'Switch to light mode',
+  themeToDark: 'Switch to dark mode',
 };
 
 export const UI: Record<Lang, Dict> = { zh, en };

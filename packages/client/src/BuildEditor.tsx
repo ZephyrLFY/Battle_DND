@@ -25,6 +25,7 @@ import {
   type SkillId,
 } from '@italian-brainrot/shared';
 import { useI18n, skillName, skillDesc, abilityLabel, learnReasonText, passiveInfo, type Lang } from './i18n.js';
+import { AttrHelp } from './AttrHelp.js';
 
 export function BuildEditor({
   poke,
@@ -63,7 +64,10 @@ export function BuildEditor({
           </label>
         </div>
 
-        <div className="col-title">{t.allocTitle}</div>
+        <div className="col-title">
+          {t.allocTitle}
+          <AttrHelp align="left" />
+        </div>
         <div className="abilities">
           {ABILITY_KEYS.map((k) => (
             <AbilityRow

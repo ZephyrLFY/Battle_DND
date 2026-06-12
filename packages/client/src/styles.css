@@ -1,9 +1,60 @@
 * { box-sizing: border-box; }
 
+/* ── 主题 token：默认夜间；日间 = VS Code Solarized Light 色板 ──
+   战场 canvas 是独立的"游戏视口"（背景图为暗色调），不随主题切换。 */
+:root {
+  --bg: #0e1320;        /* 页面底 */
+  --bg2: #141c2e;       /* 次级面板/option */
+  --panel: #182032;     /* 卡片面板 */
+  --side: #10182a;      /* 侧栏 */
+  --elev: #1e2740;      /* 浮起元素 */
+  --deep: #0a0f1a;      /* 深槽（日志/血条底） */
+  --border: #28324a;
+  --btn: #2c3650;       /* 按钮底（兼作次级描边） */
+  --btn-hover: #38456a;
+  --btn-disabled: #232b3d;
+  --border3: #3a4664;
+  --text: #e6edf3;
+  --text2: #aeb9cc;
+  --text3: #9fb0c9;
+  --text4: #8b98ad;
+  --dim: #5a6680;
+  --strong: #ffffff;
+  --accent: #f0c33c;
+  --accent2: #ffd24a;
+  --energy: #c8a8ff;
+  --glass: rgba(12, 17, 29, 0.66);
+  --glass-border: rgba(255, 255, 255, 0.14);
+}
+[data-theme='light'] {
+  --bg: #fdf6e3;        /* base3 */
+  --bg2: #f5eeda;
+  --panel: #eee8d5;     /* base2 */
+  --side: #f3ecd8;
+  --elev: #e9e2cc;
+  --deep: #f8f1de;
+  --border: #d9d0b6;
+  --btn: #ddd3b6;
+  --btn-hover: #d2c7a5;
+  --btn-disabled: #e9e2cc;
+  --border3: #c9bfa3;
+  --text: #586e75;      /* base01 */
+  --text2: #657b83;     /* base00 */
+  --text3: #839496;     /* base0 */
+  --text4: #93a1a1;     /* base1 */
+  --dim: #93a1a1;
+  --strong: #073642;    /* base02 */
+  --accent: #b58900;    /* yellow */
+  --accent2: #b58900;
+  --energy: #6c71c4;    /* violet */
+  --glass: rgba(253, 246, 227, 0.82);
+  --glass-border: rgba(88, 110, 117, 0.3);
+}
+
 body {
   margin: 0;
-  background: #0e1320;
-  color: #e6edf3;
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   /* 显式行高：中/英字体的 normal 行高不同（中文行盒更高），
      切语言会导致所有文字撑起的容器微胀微缩。数值行高与脚本无关。 */
@@ -34,12 +85,12 @@ body {
   padding: 7px 12px;
   font-size: 13px;
   font-weight: 700;
-  background: #182032;
-  border: 1px solid #2c3650;
-  color: #c2cee0;
+  background: var(--panel);
+  border: 1px solid var(--btn);
+  color: var(--text2);
   border-radius: 18px;
 }
-.lang-toggle:hover { background: #2c3650; color: #fff; border-color: #4a6; }
+.lang-toggle:hover { background: var(--btn); color: var(--strong); border-color: #4a6; }
 .lang-toggle svg { display: block; }
 
 /* ── 战斗页布局：左侧信息栏 + 右侧战场 ── */
@@ -53,8 +104,8 @@ body {
   width: 330px;
   flex: none;
   position: relative; /* 供 .side-inner absolute 填充 */
-  background: #10182a;
-  border: 1px solid #28324a;
+  background: var(--side);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   /* 高度由 flex stretch 跟随右列；内容用 absolute 填充 → 永远不会反向撑高页面。
@@ -73,13 +124,13 @@ body {
   padding: 10px 0;
   font-size: 13px;
   font-weight: 600;
-  background: #141c2e;
-  color: #8b98ad;
+  background: var(--bg2);
+  color: var(--text4);
   border-radius: 0;
-  border-bottom: 1px solid #28324a;
+  border-bottom: 1px solid var(--border);
 }
-.side-tab:not(:last-child) { border-right: 1px solid #28324a; }
-.side-tab.on { background: #1e2740; color: #f0c33c; }
+.side-tab:not(:last-child) { border-right: 1px solid var(--border); }
+.side-tab.on { background: var(--elev); color: var(--accent); }
 .side-content {
   flex: 1;
   min-height: 0;
@@ -91,8 +142,8 @@ body {
 /* 队伍面板：角色卡 */
 .team-panel { display: flex; flex-direction: column; gap: 10px; }
 .fighter-card {
-  background: #182032;
-  border: 1px solid #28324a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
 }
@@ -101,13 +152,13 @@ body {
 .fc-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
 .fc-head img { width: 52px; height: 52px; object-fit: contain; flex: none; }
 .fc-title { min-width: 0; }
-.fc-name { font-weight: 700; font-size: 14px; color: #fff; }
-.fc-name small { color: #8b98ad; font-weight: 400; }
-.fc-sub { font-size: 11.5px; color: #9fb0c9; margin-top: 3px; }
+.fc-name { font-weight: 700; font-size: 14px; color: var(--strong); }
+.fc-name small { color: var(--text4); font-weight: 400; }
+.fc-sub { font-size: 11.5px; color: var(--text3); margin-top: 3px; }
 .fc-hpbar {
   position: relative;
   height: 14px;
-  background: #0a0f1a;
+  background: var(--deep);
   border-radius: 7px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -124,7 +175,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  color: #fff;
+  color: var(--strong);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 .fc-skills { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -132,13 +183,13 @@ body {
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 9px;
-  background: #1e2740;
-  border: 1px solid #2c3650;
-  color: #c2cee0;
+  background: var(--elev);
+  border: 1px solid var(--btn);
+  color: var(--text2);
   cursor: default;
 }
-.fc-skill small { color: #c8a8ff; }
-.fc-skill.sig { border-color: #b8923a; background: #2a2418; color: #f0c33c; }
+.fc-skill small { color: var(--energy); }
+.fc-skill.sig { border-color: #b8923a; background: #2a2418; color: var(--accent); }
 .fc-skill:hover { border-color: #4a6; }
 .fc-status { margin-top: 8px; font-size: 12px; font-weight: 700; color: #ffb86b; }
 
@@ -147,8 +198,8 @@ body {
   position: fixed;
   z-index: 100;
   width: 270px;
-  background: #0e1320;
-  border: 1px solid #3a4664;
+  background: var(--bg);
+  border: 1px solid var(--border3);
   border-radius: 10px;
   padding: 10px 12px;
   pointer-events: none;
@@ -161,9 +212,9 @@ body {
   justify-content: space-between;
   gap: 8px;
 }
-.fc-tip-head b { font-size: 13px; color: #fff; }
-.fc-tip-meta { font-size: 11px; color: #8b98ad; margin: 4px 0 6px; }
-.fc-tip-desc { font-size: 12px; color: #9fb0c9; line-height: 1.55; }
+.fc-tip-head b { font-size: 13px; color: var(--strong); }
+.fc-tip-meta { font-size: 11px; color: var(--text4); margin: 4px 0 6px; }
+.fc-tip-desc { font-size: 12px; color: var(--text3); line-height: 1.55; }
 
 h1 {
   font-size: 22px;
@@ -173,7 +224,7 @@ h1 {
 h1 .sub {
   font-size: 13px;
   font-weight: 400;
-  color: #8b98ad;
+  color: var(--text4);
 }
 
 .pickers {
@@ -184,13 +235,13 @@ h1 .sub {
 }
 .vs {
   font-weight: 800;
-  color: #f0c33c;
+  color: var(--accent);
   font-size: 18px;
 }
 
 .picker {
-  background: #182032;
-  border: 1px solid #28324a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
 }
@@ -201,16 +252,16 @@ h1 .sub {
 .picker select {
   width: 100%;
   padding: 6px;
-  background: #0e1320;
-  color: #e6edf3;
-  border: 1px solid #2c3650;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--btn);
   border-radius: 6px;
 }
 .lvl {
   display: block;
   font-size: 13px;
   margin: 10px 0 6px;
-  color: #aeb9cc;
+  color: var(--text2);
 }
 .lvl input {
   width: 100%;
@@ -220,7 +271,7 @@ h1 .sub {
   flex-wrap: wrap;
   gap: 6px 12px;
   font-size: 12px;
-  color: #9fb0c9;
+  color: var(--text3);
 }
 
 .controls {
@@ -236,8 +287,8 @@ button {
   font-weight: 700;
   font-size: 14px;
   line-height: 1.3; /* 显式行高：消除中英字体 normal 行高差导致的按钮高度抖动 */
-  background: #2c3650;
-  color: #e6edf3;
+  background: var(--btn);
+  color: var(--text);
 }
 select,
 input {
@@ -249,13 +300,13 @@ button:disabled {
 }
 button.fight {
   background: #e0533d;
-  color: #fff;
+  color: #fff; /* 彩色实底固定白字，双主题通用 */
 }
 
 .stage {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid #28324a;
+  border: 1px solid var(--border);
   display: block;
 }
 
@@ -272,23 +323,23 @@ button.fight {
   align-items: center;
   gap: 7px;
   padding: 6px 11px;
-  background: rgba(12, 17, 29, 0.66);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
   border-radius: 17px;
-  color: #aeb9cc;
+  color: var(--text2);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   transition: border-color 0.15s ease, color 0.15s ease;
   line-height: 1;
 }
-.bg-picker:hover { border-color: rgba(240, 195, 60, 0.55); color: #e6edf3; }
+.bg-picker:hover { border-color: rgba(240, 195, 60, 0.55); color: var(--text); }
 .bg-picker select {
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
   border: none;
-  color: #e6edf3;
+  color: var(--text);
   font-size: 12.5px;
   font-weight: 600;
   padding: 0 2px;
@@ -296,10 +347,10 @@ button.fight {
   outline: none;
   line-height: 1.3;
 }
-.bg-picker select option { background: #141c2e; color: #e6edf3; }
+.bg-picker select option { background: var(--bg2); color: var(--text); }
 .bg-picker-arrow {
   font-size: 9px;
-  color: #8b98ad;
+  color: var(--text4);
   pointer-events: none;
   margin-left: -2px;
 }
@@ -326,16 +377,16 @@ button.fight {
   padding: 16px 28px;
   border-radius: 12px;
   background: rgba(14, 19, 32, 0.85);
-  border: 1px solid #28324a;
+  border: 1px solid var(--border);
 }
 .verdict-overlay.win .verdict-text { color: #4dd86b; border-color: #2f5a3c; }
 .verdict-overlay.lose .verdict-text { color: #ff5555; border-color: #5a3030; }
-.verdict-overlay.draw .verdict-text { color: #f0c33c; border-color: #5a5230; }
+.verdict-overlay.draw .verdict-text { color: var(--accent); border-color: #5a5230; }
 
 .log {
   margin-top: 16px;
-  background: #0a0f1a;
-  border: 1px solid #1e2740;
+  background: var(--deep);
+  border: 1px solid var(--elev);
   border-radius: 10px;
   padding: 12px;
   height: 180px;
@@ -344,13 +395,13 @@ button.fight {
   line-height: 1.6;
 }
 .log-empty {
-  color: #5a6680;
+  color: var(--dim);
   text-align: center;
   padding-top: 60px;
 }
 .log-line {
-  color: #c2cee0;
-  border-bottom: 1px solid #141c2e;
+  color: var(--text2);
+  border-bottom: 1px solid var(--bg2);
   padding: 2px 0;
   font-variant-numeric: tabular-nums;
 }
@@ -359,11 +410,11 @@ button.fight {
 .section-title {
   font-weight: 700;
   margin: 4px 0 10px;
-  color: #aeb9cc;
+  color: var(--text2);
 }
 .build {
-  background: #182032;
-  border: 1px solid #28324a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
 }
@@ -375,9 +426,9 @@ button.fight {
 }
 .build-row select {
   padding: 6px 10px;
-  background: #0e1320;
-  color: #e6edf3;
-  border: 1px solid #2c3650;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--btn);
   border-radius: 6px;
 }
 .abilities {
@@ -392,14 +443,14 @@ button.fight {
   align-items: center;
   gap: 10px;
 }
-.ab-name { color: #aeb9cc; font-size: 14px; }
+.ab-name { color: var(--text2); font-size: 14px; }
 .ab-val { text-align: center; font-weight: 700; }
-.ab-val small { color: #7d8aa3; font-weight: 400; }
+.ab-val small { color: var(--dim); font-weight: 400; }
 .ab-btn {
   padding: 4px 0;
   font-size: 16px;
   line-height: 1;
-  background: #2c3650;
+  background: var(--btn);
 }
 .build-controls {
   display: flex;
@@ -407,8 +458,8 @@ button.fight {
   gap: 14px;
   margin-bottom: 10px;
 }
-.pts { font-size: 13px; color: #8b98ad; }
-.pts.has { color: #f0c33c; font-weight: 700; }
+.pts { font-size: 13px; color: var(--text4); }
+.pts.has { color: var(--accent); font-weight: 700; }
 .build-controls button {
   padding: 5px 12px;
   font-size: 13px;
@@ -418,19 +469,19 @@ button.fight {
   flex-wrap: wrap;
   gap: 6px 14px;
   font-size: 13px;
-  color: #9fb0c9;
+  color: var(--text3);
   margin-bottom: 12px;
   padding-top: 10px;
-  border-top: 1px solid #28324a;
+  border-top: 1px solid var(--border);
 }
 
 /* ── 技能 ── */
 .skills-title {
   font-size: 13px;
-  color: #aeb9cc;
+  color: var(--text2);
   margin: 10px 0 6px;
 }
-.hint { font-size: 12px; color: #5a6680; }
+.hint { font-size: 12px; color: var(--dim); }
 .skill-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -448,11 +499,11 @@ button.fight {
   border-color: #2f5a3c;
 }
 .skill-card.learn {
-  background: #1a2233;
-  border-color: #2c3650;
+  background: var(--bg2);
+  border-color: var(--btn);
   cursor: pointer;
 }
-.skill-card.learn:hover:not(.locked) { border-color: #4a6; background: #1e2a3a; }
+.skill-card.learn:hover:not(.locked) { border-color: #4a6; background: var(--elev); }
 .skill-card.learn.locked {
   opacity: 0.5;
   cursor: not-allowed;
@@ -479,17 +530,17 @@ button.fight {
   gap: 6px;
   margin-bottom: 4px;
 }
-.skill-name { font-weight: 700; font-size: 13px; color: #e6edf3; }
-.skill-name .unlock { color: #8b98ad; font-weight: 400; }
+.skill-name { font-weight: 700; font-size: 13px; color: var(--text); }
+.skill-name .unlock { color: var(--text4); font-weight: 400; }
 .cost-badge {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 10px;
   white-space: nowrap;
 }
-.cost-badge.spell { background: #3a2c5a; color: #c8a8ff; }
+.cost-badge.spell { background: #3a2c5a; color: var(--energy); }
 .cost-badge.free { background: #2a3a4a; color: #9fc0d8; }
-.skill-desc { font-size: 12px; color: #9fb0c9; line-height: 1.45; }
+.skill-desc { font-size: 12px; color: var(--text3); line-height: 1.45; }
 
 /* 养成页：天生被动卡（紫金描边，与签名技能槽区分） */
 .passive-card {
@@ -499,13 +550,13 @@ button.fight {
   padding: 8px 10px;
   margin-bottom: 12px;
 }
-.cost-badge.passive { background: #3a2c5a; color: #c8a8ff; }
+.cost-badge.passive { background: #3a2c5a; color: var(--energy); }
 
 /* ── 战斗操作面板 ── */
 .action-panel {
   margin: 12px 0;
-  background: #182032;
-  border: 1px solid #28324a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
   position: relative; /* 供 .ap-overlay 定位 */
@@ -528,7 +579,7 @@ button.fight {
 .ap-title {
   font-weight: 700;
   margin-bottom: 8px;
-  color: #f0c33c;
+  color: var(--accent);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -536,17 +587,17 @@ button.fight {
 .ap-slots {
   font-size: 12px;
   font-weight: 600;
-  color: #c8a8ff;
+  color: var(--energy);
 }
 .ap-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .ap-btn {
-  background: #2c3650;
+  background: var(--btn);
   padding: 8px 14px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
-.ap-btn:hover:not(.disabled) { background: #38456a; }
+.ap-btn:hover:not(.disabled) { background: var(--btn-hover); }
 .ap-btn.disabled { opacity: 0.4; }
 .ap-cost { font-size: 11px; }
 .ap-reason { font-size: 10px; color: #ff8888; }
@@ -556,30 +607,30 @@ button.fight {
 .lineup-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
 .lineup-tab {
   flex: 1;
-  background: #182032;
-  border: 1px solid #28324a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   padding: 8px 6px;
   font-size: 13px;
 }
-.lineup-tab.on { background: #2c3650; border-color: #4a6; color: #fff; }
-.lineup-tab small { color: #8b98ad; }
+.lineup-tab.on { background: var(--btn); border-color: #4a6; color: var(--strong); }
+.lineup-tab small { color: var(--text4); }
 .member-pick {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
   font-size: 13px;
-  color: #aeb9cc;
+  color: var(--text2);
 }
 .member-pick select {
   padding: 5px 8px;
-  background: #0e1320;
-  color: #e6edf3;
-  border: 1px solid #2c3650;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--btn);
   border-radius: 6px;
   margin-left: 4px;
 }
-.lineup-hint { color: #5a6680; font-size: 12px; }
+.lineup-hint { color: var(--dim); font-size: 12px; }
 
 /* ── 自动开关 / 选目标 ── */
 .auto-toggle {
@@ -587,10 +638,10 @@ button.fight {
   align-items: center;
   gap: 5px;
   font-size: 13px;
-  color: #aeb9cc;
+  color: var(--text2);
   cursor: pointer;
 }
-.ap-hint { font-size: 12px; color: #ffd24a; margin-bottom: 8px; }
+.ap-hint { font-size: 12px; color: var(--accent2); margin-bottom: 8px; }
 .ap-btn.cancel { background: #3a2730; color: #e0a0a0; }
 
 /* ── 步骤指示条 ── */
@@ -601,22 +652,22 @@ button.fight {
   gap: 4px;
   margin: 4px 0 16px;
   font-size: 15px;
-  color: #5a6680;
+  color: var(--dim);
 }
 .stepbar-item { font-weight: 600; }
-.stepbar-item.on { color: #f0c33c; }
-.stepbar-sep { margin: 0 10px; color: #2c3650; }
+.stepbar-item.on { color: var(--accent); }
+.stepbar-sep { margin: 0 10px; color: var(--btn); }
 
 /* ── 选队转盘 ── */
 .carousel {
-  background: #141c2e;
-  border: 1px solid #28324a;
+  background: var(--bg2);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px 12px 20px;
   text-align: center;
 }
-.carousel-count { color: #aeb9cc; font-size: 15px; margin-bottom: 12px; }
-.carousel-count b { color: #f0c33c; }
+.carousel-count { color: var(--text2); font-size: 15px; margin-bottom: 12px; }
+.carousel-count b { color: var(--accent); }
 
 .carousel-stats {
   display: flex;
@@ -636,9 +687,9 @@ button.fight {
   justify-content: center;
   width: 17px;
   height: 17px;
-  border: 1.5px solid #5a6680;
+  border: 1.5px solid var(--dim);
   border-radius: 50%;
-  color: #8b98ad;
+  color: var(--text4);
   font-size: 11px;
   font-style: italic;
   font-weight: 700;
@@ -647,7 +698,7 @@ button.fight {
   user-select: none;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
-.info-i:hover { border-color: #f0c33c; color: #f0c33c; }
+.info-i:hover { border-color: var(--accent); color: var(--accent); }
 .info-tip {
   display: none;
   position: absolute;
@@ -656,8 +707,8 @@ button.fight {
   transform: translateX(-50%);
   width: 360px;
   z-index: 60;
-  background: #0e1320;
-  border: 1px solid #3a4664;
+  background: var(--bg);
+  border: 1px solid var(--border3);
   border-radius: 10px;
   padding: 12px 14px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
@@ -666,7 +717,7 @@ button.fight {
   cursor: default;
 }
 .info-i:hover .info-tip { display: block; }
-.info-block + .info-block { margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e2740; }
+.info-block + .info-block { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--elev); }
 .info-title {
   display: flex;
   align-items: center;
@@ -674,16 +725,16 @@ button.fight {
   gap: 8px;
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--strong);
   margin-bottom: 4px;
 }
-.info-desc { font-size: 12px; color: #9fb0c9; line-height: 1.55; }
+.info-desc { font-size: 12px; color: var(--text3); line-height: 1.55; }
 .carousel-stats .stat.str { color: #e0533d; }
-.carousel-stats .stat.dex { color: #f0c33c; }
+.carousel-stats .stat.dex { color: var(--accent); }
 .carousel-stats .stat.con { color: #4dd86b; }
 
 .carousel-blurb {
-  color: #aeb9cc;
+  color: var(--text2);
   font-size: 14px;
   line-height: 1.5;
   max-width: 560px;
@@ -698,9 +749,9 @@ button.fight {
   gap: 8px;
 }
 .carousel-arrow {
-  background: #1e2740;
-  border: 1px solid #2c3650;
-  color: #c2cee0;
+  background: var(--elev);
+  border: 1px solid var(--btn);
+  color: var(--text2);
   font-size: 28px;
   line-height: 1;
   width: 44px;
@@ -710,7 +761,7 @@ button.fight {
   flex: none;
   z-index: 20;
 }
-.carousel-arrow:hover { background: #2c3650; color: #fff; }
+.carousel-arrow:hover { background: var(--btn); color: var(--strong); }
 
 /* 环形轨道：item 绝对定位，靠 transform 过渡做滑动 + 缩放 */
 .carousel-track {
@@ -752,11 +803,11 @@ button.fight {
   border-radius: 10px;
   white-space: nowrap;
 }
-.carousel-name { font-size: 20px; font-weight: 700; color: #fff; margin: 6px 0 12px; }
+.carousel-name { font-size: 20px; font-weight: 700; color: var(--strong); margin: 6px 0 12px; }
 
 .carousel-add {
   background: #2f6d3f;
-  color: #fff;
+  color: #fff; /* 彩色实底固定白字 */
   border: none;
   border-radius: 8px;
   padding: 10px 24px;
@@ -766,7 +817,7 @@ button.fight {
 .carousel-add:hover { background: #3a8a4f; }
 .carousel-add.remove { background: #5a3030; }
 .carousel-add.remove:hover { background: #6e3a3a; }
-.carousel-add:disabled { background: #232b3d; color: #5a6680; cursor: not-allowed; }
+.carousel-add:disabled { background: var(--btn-disabled); color: var(--dim); cursor: not-allowed; }
 
 /* ── 队伍槽位条 ── */
 .team-slots {
@@ -786,13 +837,13 @@ button.fight {
   position: relative;
 }
 .slot.empty {
-  border: 2px dashed #2c3650;
-  color: #3c4868;
+  border: 2px dashed var(--btn);
+  color: var(--dim);
 }
 .slot.empty .slot-plus { font-size: 32px; }
 .slot.filled {
-  background: #1e2740;
-  border: 1px solid #3a4664;
+  background: var(--elev);
+  border: 1px solid var(--border3);
 }
 .slot.filled img { width: 96px; height: 96px; object-fit: contain; }
 .slot-remove {
@@ -816,7 +867,7 @@ button.fight {
 .slot-remove:hover { background: #5a3030; color: #fff; }
 
 /* 养成步：角色名（替代原下拉） */
-.build-name { font-size: 16px; font-weight: 700; color: #fff; }
+.build-name { font-size: 16px; font-weight: 700; color: var(--strong); }
 
 /* 养成页左右两列：左加点 / 右学技能 */
 .build-cols {
@@ -826,14 +877,14 @@ button.fight {
   align-items: start;
 }
 .build-col-left {
-  background: #141c2e;
-  border: 1px solid #28324a;
+  background: var(--bg2);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
 }
 .col-title {
   font-size: 13px;
-  color: #8b98ad;
+  color: var(--text4);
   margin: 10px 0 6px;
   font-weight: 600;
 }
@@ -854,14 +905,14 @@ button.fight {
   justify-content: center;
 }
 .eq-slot.empty {
-  border: 1px dashed #2c3650;
-  color: #3c4868;
+  border: 1px dashed var(--btn);
+  color: var(--dim);
   font-size: 12px;
   align-items: center;
 }
 .eq-slot.filled {
-  background: #1e2740;
-  border: 1px solid #3a4664;
+  background: var(--elev);
+  border: 1px solid var(--border3);
   gap: 4px;
 }
 /* 标题行：技能名/消耗 + 专属标/卸下按钮 */
@@ -870,7 +921,7 @@ button.fight {
 /* 技能说明：固定 2 行高度，超出截断，保证各槽等高 */
 .eq-desc {
   font-size: 11px;
-  color: #9fb0c9;
+  color: var(--text3);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -893,9 +944,64 @@ button.fight {
 .sig-tag {
   flex: none;
   font-size: 11px;
-  color: #f0c33c;
+  color: var(--accent);
   border: 1px solid #b8923a;
   border-radius: 6px;
   padding: 3px 8px;
   white-space: nowrap;
 }
+
+/* ── 日间模式专属覆盖：暗色调专用的染色元素换 Solarized 同语义色 ── */
+[data-theme='light'] .skill-card.learned { background: #ecedd2; border-color: #a3b34a; }
+[data-theme='light'] .cost-badge.spell { background: #e8e1f4; color: #6c71c4; }
+[data-theme='light'] .cost-badge.free { background: #ddeaf2; color: #268bd2; }
+[data-theme='light'] .cost-badge.passive { background: #e8e1f4; color: #6c71c4; }
+[data-theme='light'] .passive-card { background: #f0e9f7; border-color: #a79bd6; }
+[data-theme='light'] .eq-slot.signature { background: #f6edd0; border-color: #b58900; }
+[data-theme='light'] .sig-tag { color: #b58900; border-color: #b58900; }
+[data-theme='light'] .fc-skill.sig { background: #f6edd0; border-color: #b58900; color: #8a6d00; }
+[data-theme='light'] .forget-btn { background: #f3ddd6; color: #dc322f; }
+[data-theme='light'] .ap-overlay { background: rgba(253, 246, 227, 0.8); color: #586e75; }
+[data-theme='light'] .ap-reason { color: #dc322f; }
+[data-theme='light'] .fc-status { color: #cb4b16; }
+[data-theme='light'] .bar-full,
+[data-theme='light'] .skill-status.locked { color: #cb4b16; }
+[data-theme='light'] .skill-status.ok { color: #859900; }
+[data-theme='light'] .carousel-stats .stat.con { color: #859900; }
+[data-theme='light'] .carousel-badge { background: #e3ecc8; color: #687d12; }
+[data-theme='light'] .fc-tip,
+[data-theme='light'] .info-tip { box-shadow: 0 8px 24px rgba(88, 110, 117, 0.3); }
+[data-theme='light'] .bg-picker { box-shadow: 0 2px 10px rgba(88, 110, 117, 0.25); }
+[data-theme='light'] .stage { border-color: #c9bfa3; }
+
+/* 日/夜主题切换（语言按钮左侧，同款胶囊） */
+.theme-toggle {
+  position: fixed;
+  top: 16px;
+  right: 96px;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--btn);
+  color: var(--text2);
+  border-radius: 18px;
+}
+.theme-toggle:hover { background: var(--btn); color: var(--accent); border-color: var(--accent); }
+.theme-toggle svg { display: block; }
+
+/* (?) 属性说明 tooltip：在窄列里从图标左缘向右展开，避免左侧溢出 */
+.info-tip.from-left { left: 0; transform: none; }
+
+/* 角色名行：名字 + (i) 技能速览图标同行居中 */
+.carousel-name { display: flex; justify-content: center; align-items: center; gap: 8px; }
+
+/* 养成页列标题：标题 + (?) 图标同行 */
+.col-title { display: flex; align-items: center; gap: 6px; }
+
+/* 选人页：按钮位置已校准（总弹性间距 114px）；转盘居中分配上下间距 →
+   恰好处于顶部步骤条与底部按钮的正中间 */
+.carousel { margin-top: 57px; }
+.controls-select { margin-top: 57px; }

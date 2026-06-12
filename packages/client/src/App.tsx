@@ -18,6 +18,8 @@ import { useI18n, skillName, skillDesc, actionReason, type Lang } from './i18n.j
 import { eventToLines } from './battleLog.js';
 
 const BG_STORAGE_KEY = 'battle.bg';
+const THEME_KEY = 'ui.theme';
+type Theme = 'dark' | 'light';
 
 type SideTab = 'log' | 'a' | 'b';
 
@@ -48,6 +50,14 @@ export function App() {
     localStorage.setItem(BG_STORAGE_KEY, name);
   };
 
+  // 日/夜主题：documentElement[data-theme] 驱动 CSS 变量；默认夜间
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'));
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme((th) => (th === 'dark' ? 'light' : 'dark'));
+
   const canFight = team.length >= 1; // 至少 1 人即可出战（最多 LINEUP_SIZE）
 
   const setMember = (idx: number, c: Combatant) => {
@@ -67,7 +77,26 @@ export function App() {
 
   return (
     <div className={`app ${step === 'battle' ? 'app-wide' : ''}`}>
-      {/* 右上角语言切换（文A 图标） */}
+      {/* 右上角：日/夜主题切换（太阳/月亮）+ 语言切换（文A） */}
+      <button
+        className="theme-toggle"
+        onClick={toggleTheme}
+        title={theme === 'dark' ? t.themeToLight : t.themeToDark}
+        aria-label={theme === 'dark' ? t.themeToLight : t.themeToDark}
+      >
+        {theme === 'dark' ? (
+          // 夜间模式中显示太阳（点击 → 日间）
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none" />
+            <path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19" />
+          </svg>
+        ) : (
+          // 日间模式中显示月亮（点击 → 夜间）
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M20.8 14.1A8.5 8.5 0 0 1 9.9 3.2a8.5 8.5 0 1 0 10.9 10.9z" />
+          </svg>
+        )}
+      </button>
       <button className="lang-toggle" onClick={toggle} title={t.langToggleTitle} aria-label={t.langToggleTitle}>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
           <text x="2" y="11" fontSize="11" fontWeight="700">文</text>
@@ -95,7 +124,7 @@ export function App() {
       {step === 'select' ? (
         <>
           <TeamCarousel team={team} onChange={setTeam} />
-          <div className="controls">
+          <div className="controls controls-select">
             <button
               className="fight"
               disabled={!canFight}
