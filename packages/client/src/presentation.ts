@@ -13,6 +13,18 @@ export type PoseMap = Record<string, 'attack' | 'hit'>;
 /** 突进表：`攻击者 key` → `目标 key`。单体攻击时攻击者滑到目标面前；AOE/全体/自身原地。 */
 export type LungeMap = Record<string, string>;
 
+/** 浮动战斗文字（跳字）：useBattle 按回放事件生成，BattleStage 上浮渐隐绘制。 */
+export interface FloatFx {
+  /** 自增 id（渲染 key + 横向错位用）。 */
+  id: number;
+  /** 目标角色 `${team}:${id}`。 */
+  key: string;
+  text: string;
+  kind: 'damage' | 'crit' | 'heal' | 'miss';
+  /** 出生时间（performance.now()）。 */
+  at: number;
+}
+
 /** 角色 sprite 路径（public 下，缺图时战场回退 idle → 圆形占位）。 */
 export function fighterSprite(archetypeId: string, pose: Pose = 'idle'): string {
   return pose === 'idle' ? `/fighters/${archetypeId}.webp` : `/fighters/${archetypeId}.${pose}.webp`;

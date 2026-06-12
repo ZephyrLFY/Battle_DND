@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   SKILLS,
   generateEnemyTeam,
@@ -18,6 +18,8 @@ import { useI18n, skillName, skillDesc, actionReason, type Lang } from './i18n.j
 import { eventToLines } from './battleLog.js';
 
 const BG_STORAGE_KEY = 'battle.bg';
+const THEME_KEY = 'ui.theme';
+type Theme = 'dark' | 'light';
 
 type SideTab = 'log' | 'a' | 'b';
 
@@ -31,7 +33,6 @@ export function App() {
   const [step, setStep] = useState<Step>('select');
   const [editIdx, setEditIdx] = useState(0); // 养成步：正在调第几个出战角色
   const [sideTab, setSideTab] = useState<SideTab>('log'); // 战斗页左侧栏：日志/我方/敌方
-  const logRef = useRef<HTMLDivElement>(null);
 
   // 战场背景：manifest.json 列出可选项（由美术管线生成）；'' = 默认渐变。选择记住在本地。
   const [bgList, setBgList] = useState<string[]>([]);
@@ -49,9 +50,13 @@ export function App() {
     localStorage.setItem(BG_STORAGE_KEY, name);
   };
 
+  // 日/夜主题：documentElement[data-theme] 驱动 CSS 变量；默认夜间
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'));
   useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [battle.logEvents, sideTab]);
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme((th) => (th === 'dark' ? 'light' : 'dark'));
 
   const canFight = team.length >= 1; // 至少 1 人即可出战（最多 LINEUP_SIZE）
 
@@ -72,7 +77,26 @@ export function App() {
 
   return (
     <div className={`app ${step === 'battle' ? 'app-wide' : ''}`}>
-      {/* 右上角语言切换（文A 图标） */}
+      {/* 右上角：日/夜主题切换（太阳/月亮）+ 语言切换（文A） */}
+      <button
+        className="theme-toggle"
+        onClick={toggleTheme}
+        title={theme === 'dark' ? t.themeToLight : t.themeToDark}
+        aria-label={theme === 'dark' ? t.themeToLight : t.themeToDark}
+      >
+        {theme === 'dark' ? (
+          // 夜间模式中显示太阳（点击 → 日间）
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none" />
+            <path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19" />
+          </svg>
+        ) : (
+          // 日间模式中显示月亮（点击 → 夜间）
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M20.8 14.1A8.5 8.5 0 0 1 9.9 3.2a8.5 8.5 0 1 0 10.9 10.9z" />
+          </svg>
+        )}
+      </button>
       <button className="lang-toggle" onClick={toggle} title={t.langToggleTitle} aria-label={t.langToggleTitle}>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
           <text x="2" y="11" fontSize="11" fontWeight="700">文</text>
@@ -100,7 +124,7 @@ export function App() {
       {step === 'select' ? (
         <>
           <TeamCarousel team={team} onChange={setTeam} />
-          <div className="controls">
+          <div className="controls controls-select">
             <button
               className="fight"
               disabled={!canFight}
@@ -140,46 +164,57 @@ export function App() {
         </>
       ) : (
         <div className="battle-layout">
-          {/* 左侧信息栏：战斗日志 / 我方 / 敌方 */}
+          {/* 左侧信息栏：战斗日志 / 我方 / 敌方。
+              内层 absolute 填充：内容不撑高页面，高度恒随右列，内部滚动。 */}
           <aside className="battle-side">
-            <div className="side-tabs">
-              {([
-                ['log', t.sideTabLog],
-                ['a', t.sideTabAlly],
-                ['b', t.sideTabEnemy],
-              ] as [SideTab, string][]).map(([key, label]) => (
-                <button
-                  key={key}
-                  className={`side-tab ${sideTab === key ? 'on' : ''}`}
-                  onClick={() => setSideTab(key)}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="side-inner">
+              <div className="side-tabs">
+                {([
+                  ['log', t.sideTabLog],
+                  ['a', t.sideTabAlly],
+                  ['b', t.sideTabEnemy],
+                ] as [SideTab, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={`side-tab ${sideTab === key ? 'on' : ''}`}
+                    onClick={() => setSideTab(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {sideTab === 'log' ? (
+                <div className="side-content side-log">
+                  {battle.logEvents.length === 0 && <div className="log-empty">{t.logPlaceholder}</div>}
+                  {/* 倒序：最新一行在最上面，无需自动滚动；切语言时历史日志整体跟切 */}
+                  {battle.logEvents
+                    .flatMap((ev, i) =>
+                      eventToLines(ev, lang).map((l, j) => (
+                        <div key={`${i}-${j}`} className="log-line">
+                          {l}
+                        </div>
+                      )),
+                    )
+                    .reverse()}
+                </div>
+              ) : (
+                <div className="side-content">
+                  <TeamPanel fighters={battle.state?.teams[sideTab] ?? []} lang={lang} />
+                </div>
+              )}
             </div>
-            {sideTab === 'log' ? (
-              <div className="side-content side-log" ref={logRef}>
-                {battle.logEvents.length === 0 && <div className="log-empty">{t.logPlaceholder}</div>}
-                {battle.logEvents.flatMap((ev, i) =>
-                  eventToLines(ev, lang).map((l, j) => (
-                    <div key={`${i}-${j}`} className="log-line">
-                      {l}
-                    </div>
-                  )),
-                )}
-              </div>
-            ) : (
-              <div className="side-content">
-                <TeamPanel fighters={battle.state?.teams[sideTab] ?? []} lang={lang} />
-              </div>
-            )}
           </aside>
 
           {/* 右侧：战场 + 操作面板 */}
           <div className="battle-main">
-            <div className="stage-toolbar">
-              <label className="auto-toggle">
-                {t.bgLabel}
+            <div className="stage-wrap">
+              {/* 背景选择：浮在战场右上角的 HUD 胶囊 */}
+              <div className="bg-picker" title={t.bgLabel}>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <circle cx="8.5" cy="10" r="1.6" fill="currentColor" stroke="none" />
+                  <path d="M5 17l4.5-4.5 3 3L17 11l2 2" />
+                </svg>
                 <select value={bg} onChange={(e) => pickBg(e.target.value)}>
                   <option value="">{t.bgDefault}</option>
                   {bgList.map((name) => (
@@ -188,15 +223,15 @@ export function App() {
                     </option>
                   ))}
                 </select>
-              </label>
-            </div>
-            <div className="stage-wrap">
+                <span className="bg-picker-arrow">▾</span>
+              </div>
               <BattleStage
                 state={battle.state}
                 candidates={battle.pending?.candidates}
                 onPickTarget={battle.chooseTarget}
                 poses={battle.poses}
                 lunges={battle.lunges}
+                floats={battle.floats}
                 background={bg ? backgroundUrl(bg) : null}
               />
               {battle.finished && (

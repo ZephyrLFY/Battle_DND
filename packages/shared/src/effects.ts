@@ -73,11 +73,10 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
   revive: (ctx) => {
     const t = first(ctx);
     if (!t || t.dead || !t.downed) return; // 仅对倒地者生效
-    // 平衡补丁：1d8 → 1d8 + 15% maxHp（原版复活即被一刀带走，消融贡献仅 +2pt）
-    const r = roll(ctx.rng, '1d8');
+    // 平衡补丁 3c：1d8 → 1d8+15% → 纯 15% maxHp（带骰版消融 +28pt 偏高，去骰回调）
     t.downed = false;
     t.downedTurns = 0;
-    t.hp = Math.min(t.stats.maxHp, Math.max(1, r.total + Math.floor(t.stats.maxHp * 0.15)));
+    t.hp = Math.min(t.stats.maxHp, Math.max(1, Math.floor(t.stats.maxHp * 0.15)));
     ctx.emit({ t: 'revive', who: ref(t), hpLeft: t.hp });
   },
   firestorm: (ctx) => {

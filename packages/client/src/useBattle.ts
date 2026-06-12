@@ -29,7 +29,7 @@ import {
   type TargetType,
 } from '@italian-brainrot/shared';
 import { cloneView, applyEventToView } from './playback.js';
-import type { PoseMap, LungeMap } from './presentation.js';
+import type { PoseMap, LungeMap, FloatFx } from './presentation.js';
 
 /** 回放速度：每个事件之间的间隔（ms）。instant=0 → 同步清空（等价旧无动画）。 */
 export type PlaybackSpeed = '1x' | '2x' | 'instant';
@@ -50,6 +50,8 @@ export interface UseBattle {
   poses: PoseMap;
   /** 突进表：单体攻击时 攻击者→目标（战场把攻击者画到目标面前）；新回合清空。 */
   lunges: LungeMap;
+  /** 浮动战斗文字（伤害/治疗/MISS 跳字），随回放事件生成，过期由 BattleStage 渐隐。 */
+  floats: FloatFx[];
   /** 已回放的事件（日志数据源）。渲染时按当前语言格式化 → 切语言历史日志也跟着切。 */
   logEvents: BattleEvent[];
   myTurn: boolean;
@@ -93,6 +95,10 @@ export function useBattle(): UseBattle {
   const [poses, setPoses] = useState<PoseMap>({});
   const lungesRef = useRef<LungeMap>({});
   const [lunges, setLunges] = useState<LungeMap>({});
+  // 跳字：随事件生成（damage/heal/miss），过期惰性清理；critPending 记录"刚暴击、等伤害事件"的目标
+  const [floats, setFloats] = useState<FloatFx[]>([]);
+  const floatIdRef = useRef(0);
+  const critPendingRef = useRef(new Set<string>());
   const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -143,7 +149,37 @@ export function useBattle(): UseBattle {
     }
   }, []);
 
-  /** 折叠一个事件到显示态 + 更新姿势/突进 + 追加日志事件。 */
+  /** 按事件生成跳字（伤害/暴击/治疗/MISS）。返回新增项或 null。 */
+  const makeFloat = useCallback((ev: BattleEvent): FloatFx | null => {
+    const key = (r: FighterRef) => `${r.team}:${r.id}`;
+    const mk = (k: string, text: string, kind: FloatFx['kind']): FloatFx => ({
+      id: ++floatIdRef.current,
+      key: k,
+      text,
+      kind,
+      at: performance.now(),
+    });
+    switch (ev.t) {
+      case 'hit':
+        if (ev.crit) critPendingRef.current.add(key(ev.to));
+        if (!ev.hit) return mk(key(ev.to), 'MISS', 'miss');
+        return null;
+      case 'damage': {
+        const k = key(ev.to);
+        const crit = critPendingRef.current.delete(k);
+        return mk(k, `-${ev.dealt}`, crit ? 'crit' : 'damage');
+      }
+      case 'thorns':
+        return mk(key(ev.to), `-${ev.dealt}`, 'damage');
+      case 'heal':
+      case 'lifesteal':
+        return ev.amount > 0 ? mk(key(ev.who), `+${ev.amount}`, 'heal') : null;
+      default:
+        return null;
+    }
+  }, []);
+
+  /** 折叠一个事件到显示态 + 更新姿势/突进/跳字 + 追加日志事件。 */
   const foldOne = useCallback((ev: BattleEvent) => {
     if (viewRef.current) {
       applyEventToView(viewRef.current, ev);
@@ -153,8 +189,13 @@ export function useBattle(): UseBattle {
       setPoses({ ...posesRef.current });
       setLunges({ ...lungesRef.current });
     }
+    const fx = makeFloat(ev);
+    if (fx) {
+      const now = fx.at;
+      setFloats((prev) => [...prev.filter((f) => now - f.at < 1500), fx]); // 追加 + 惰性清过期
+    }
     setLogEvents((prev) => [...prev, ev]);
-  }, [updateFx]);
+  }, [updateFx, makeFloat]);
 
   /**
    * 回放清空后，把显示态的「当前行动者」对齐到逻辑态。
@@ -191,10 +232,12 @@ export function useBattle(): UseBattle {
       queueRef.current = [];
       if (viewRef.current) setView(cloneView(viewRef.current));
       if (drained.length) setLogEvents((prev) => [...prev, ...drained]);
-      posesRef.current = {}; // 瞬间档不播姿势/突进
+      posesRef.current = {}; // 瞬间档不播姿势/突进/跳字
       lungesRef.current = {};
+      critPendingRef.current.clear();
       setPoses({});
       setLunges({});
+      setFloats([]);
       syncViewToLogic();
       setPlaying(false);
       return;
@@ -239,8 +282,10 @@ export function useBattle(): UseBattle {
       viewRef.current = cloneView(s0);
       posesRef.current = {};
       lungesRef.current = {};
+      critPendingRef.current.clear();
       setPoses({});
       setLunges({});
+      setFloats([]);
       setLogEvents([]);
       setView(cloneView(s0));
       setPlaying(false);
@@ -353,6 +398,7 @@ export function useBattle(): UseBattle {
     state: view,
     poses,
     lunges,
+    floats,
     logEvents,
     myTurn,
     actions,

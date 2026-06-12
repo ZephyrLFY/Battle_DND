@@ -11,13 +11,15 @@ import { useState } from 'react';
 import {
   ARCHETYPE_IDS,
   LINEUP_SIZE,
+  SKILLS,
   archetypeName,
   newCombatant,
   abilitiesOf,
   type Combatant,
 } from '@italian-brainrot/shared';
 import { fighterSprite } from './presentation.js';
-import { useI18n, blurb } from './i18n.js';
+import { useI18n, blurb, skillName, skillDesc, passiveInfo, abilityLabel } from './i18n.js';
+import { AttrHelp } from './AttrHelp.js';
 
 export function TeamCarousel({
   team,
@@ -48,7 +50,10 @@ export function TeamCarousel({
   const removeId = (id: string) => onChange(team.filter((m) => m.archetypeId !== id));
   const toggleCenter = () => (inTeam ? removeId(centerId) : addCenter());
 
-  const ab = abilitiesOf(newCombatant(centerId)); // 1 级天赋属性
+  const center = newCombatant(centerId);
+  const ab = abilitiesOf(center); // 1 级天赋属性
+  const sigId = center.skills[0]; // 签名技能（出生自带）
+  const passive = passiveInfo(centerId, lang);
 
   return (
     <div className="carousel">
@@ -57,11 +62,12 @@ export function TeamCarousel({
         <small className="carousel-hint">{t.pickHintSize(LINEUP_SIZE)}</small>
       </div>
 
-      {/* 属性（最上） */}
+      {/* 属性（最上）+ 属性作用说明 (?) */}
       <div className="carousel-stats">
-        <span className="stat str">STR {ab.str}</span>
-        <span className="stat dex">DEX {ab.dex}</span>
-        <span className="stat con">CON {ab.con}</span>
+        <span className="stat str">{abilityLabel('str', lang)} {ab.str}</span>
+        <span className="stat dex">{abilityLabel('dex', lang)} {ab.dex}</span>
+        <span className="stat con">{abilityLabel('con', lang)} {ab.con}</span>
+        <AttrHelp />
       </div>
 
       {/* 简介（属性与角色之间） */}
@@ -102,7 +108,32 @@ export function TeamCarousel({
         <button className="carousel-arrow" onClick={next} aria-label={t.nextAria}>›</button>
       </div>
 
-      <div className="carousel-name">{archetypeName(centerId)}</div>
+      {/* 角色名 + 技能速览 (i)：hover 看签名/被动 */}
+      <div className="carousel-name">
+        {archetypeName(centerId)}
+        <span className="info-i" aria-label={t.infoAria}>
+          i
+          <div className="info-tip">
+            {sigId && (
+              <div className="info-block">
+                <div className="info-title">
+                  {t.infoSig} · {skillName(sigId, lang)}
+                  <span className={`cost-badge ${SKILLS[sigId].cost === 0 ? 'free' : 'spell'}`}>
+                    {SKILLS[sigId].cost === 0 ? t.fcNoCost : `⚡×${SKILLS[sigId].cost}`}
+                  </span>
+                </div>
+                <div className="info-desc">{skillDesc(sigId, lang)}</div>
+              </div>
+            )}
+            {passive && (
+              <div className="info-block">
+                <div className="info-title">{t.infoPassive} · {passive.name}</div>
+                <div className="info-desc">{passive.desc}</div>
+              </div>
+            )}
+          </div>
+        </span>
+      </div>
 
       <button
         className={`carousel-add ${inTeam ? 'remove' : ''}`}
@@ -126,7 +157,6 @@ export function TeamCarousel({
           return (
             <div key={i} className="slot filled" title={archetypeName(m.archetypeId)}>
               <img src={fighterSprite(m.archetypeId)} alt={archetypeName(m.archetypeId)} />
-              <span className="slot-name">{archetypeName(m.archetypeId)}</span>
               <button className="slot-remove" onClick={() => removeId(m.archetypeId)} aria-label={t.removeAria}>×</button>
             </div>
           );

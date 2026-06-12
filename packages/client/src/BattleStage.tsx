@@ -6,7 +6,7 @@ import {
   type FighterRT,
   type FighterRef,
 } from '@italian-brainrot/shared';
-import { fighterColor, fighterSprite, shouldFlip, type Pose, type PoseMap, type LungeMap } from './presentation.js';
+import { fighterColor, fighterSprite, shouldFlip, type Pose, type PoseMap, type LungeMap, type FloatFx } from './presentation.js';
 import { useI18n } from './i18n.js';
 
 const W = 1240;
@@ -45,6 +45,29 @@ function isMissing(url: string): boolean {
   return imgCache.get(url) === 'missing';
 }
 
+// ── 体量系数（fighters/meta.json，由美术管线生成）：横构图角色按系数放大绘制框 ──
+let spriteMeta: Record<string, { scale?: number }> = {};
+let metaState: 'idle' | 'loading' | 'done' = 'idle';
+function ensureMeta(onReady: () => void): void {
+  if (metaState !== 'idle') return;
+  metaState = 'loading';
+  fetch('/fighters/meta.json')
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((m: unknown) => {
+      if (m && typeof m === 'object') spriteMeta = m as Record<string, { scale?: number }>;
+      metaState = 'done';
+      onReady();
+    })
+    .catch(() => {
+      metaState = 'done'; // 无 meta（管线未跑）→ 全员 1.0
+    });
+}
+
+/** 该角色的战场绘制边长（SPRITE × 体量系数）。 */
+function spriteSize(archetypeId: string): number {
+  return SPRITE * (spriteMeta[archetypeId]?.scale ?? 1);
+}
+
 /** 取角色某姿势的 sprite；姿势图缺失/加载中回退 idle 图。 */
 function getSprite(id: string, pose: Pose, onReady: () => void): HTMLImageElement | null {
   if (pose !== 'idle') {
@@ -75,6 +98,7 @@ export function BattleStage({
   onPickTarget,
   poses,
   lunges,
+  floats,
   background,
 }: {
   state: BattleState | null;
@@ -84,6 +108,8 @@ export function BattleStage({
   poses?: PoseMap;
   /** 突进表（攻击者→目标）：单体攻击时攻击者滑到目标面前。 */
   lunges?: LungeMap;
+  /** 浮动战斗文字（跳字），上浮渐隐；命中瞬间驱动受击闪白。 */
+  floats?: FloatFx[];
   /** 背景图 URL（不传/缺图回退默认渐变）。 */
   background?: string | null;
 }) {
@@ -92,6 +118,8 @@ export function BattleStage({
   const slotsRef = useRef<Slot[]>([]);
   // 各角色当前绘制位置（跨渲染保留 → 突进/归位都是平滑缓动）
   const posRef = useRef(new Map<string, { x: number; y: number }>());
+  // HP 残影（伤害白条）：每角色一个"幽灵血量"，扣血后缓缓追上真实血量
+  const ghostRef = useRef(new Map<string, number>());
   const rafRef = useRef(0);
   const [bump, setBump] = useState(0); // sprite 异步加载完后触发重绘
   const onSpriteReady = () => setBump((n) => n + 1);
@@ -102,11 +130,13 @@ export function BattleStage({
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0); // 物理像素渲染，逻辑坐标不变
     ctx.imageSmoothingQuality = 'high';
+    ensureMeta(onSpriteReady); // 体量系数（meta.json）就绪后重绘
     if (!state) {
       ctx.clearRect(0, 0, W, H);
       drawBackground(ctx, background ?? null, onSpriteReady);
       slotsRef.current = [];
       posRef.current.clear();
+      ghostRef.current.clear();
       ctx.fillStyle = '#5a6680';
       ctx.font = '18px sans-serif';
       ctx.textAlign = 'center';
@@ -141,19 +171,22 @@ export function BattleStage({
       if (tpos && !f.downed && !f.dead) {
         // 站到目标面前：从自己一侧贴近（a 队从目标左侧、b 队从右侧）
         const side = f.team === 'a' ? -1 : 1;
-        desired.set(k, { x: tpos.x + side * SPRITE * 0.9, y: tpos.y });
+        desired.set(k, { x: tpos.x + side * spriteSize(f.archetypeId) * 0.85, y: tpos.y });
         lungeKeys.add(k);
       } else {
         desired.set(k, home.get(k)!);
       }
     }
-    // 清理离场角色的位置缓存；新角色直接落在家位置
+    // 清理离场角色的位置/残影缓存；新角色直接落在家位置
     const pos = posRef.current;
+    const ghost = ghostRef.current;
     for (const k of [...pos.keys()]) if (!desired.has(k)) pos.delete(k);
+    for (const k of [...ghost.keys()]) if (!desired.has(k)) ghost.delete(k);
     for (const k of desired.keys()) if (!pos.has(k)) pos.set(k, { ...home.get(k)! });
 
     // 2) 渲染一帧（按当前插值位置画；突进者最后画 → 盖在目标上层）
-    const render = () => {
+    const liveFloats = floats ?? [];
+    const render = (now: number) => {
       ctx.clearRect(0, 0, W, H);
       drawBackground(ctx, background ?? null, onSpriteReady);
       drawInitiativeBar(ctx, state, cur, t.initOrder, onSpriteReady);
@@ -166,12 +199,20 @@ export function BattleStage({
         const p = pos.get(k)!;
         slotsRef.current.push({ f, x: p.x, y: p.y });
         const active = cur?.id === f.id && cur?.team === f.team;
-        drawFighter(ctx, f, p.x, p.y, team === 'a' ? 'left' : 'right', active, candKeys.has(k), poses?.[k], onSpriteReady);
+        // 受击闪白：该角色 160ms 内有伤害跳字 → 命中瞬间
+        const flash = liveFloats.some(
+          (fl) => fl.key === k && (fl.kind === 'damage' || fl.kind === 'crit') && now - fl.at < 160,
+        );
+        drawFighter(ctx, f, p.x, p.y, team === 'a' ? 'left' : 'right', active, candKeys.has(k), poses?.[k], flash, ghost.get(k) ?? f.hp, now, onSpriteReady);
       }
+      // 跳字最后画（盖在所有角色之上）
+      drawFloats(ctx, liveFloats, pos, now);
     };
 
-    // 3) 缓动：当前位置指数趋近期望位置，全部就位后停帧（无突进时只画一帧）
+    // 3) 动画循环：突进缓动 + HP 残影衰减 + 跳字/闪白/光环脉冲。
+    //    战斗进行中（有当前行动者）保持循环（光环呼吸）；结束后跑完余下动效即停帧。
     const stepAnim = () => {
+      const now = performance.now();
       let moving = false;
       for (const [k, p] of pos) {
         const d = desired.get(k)!;
@@ -186,12 +227,24 @@ export function BattleStage({
           moving = true;
         }
       }
-      render();
-      if (moving) rafRef.current = requestAnimationFrame(stepAnim);
+      // HP 残影：白条向真实血量缓降（治疗则瞬时对齐——残影只表现损失）
+      for (const { f } of fighters) {
+        const k = keyOf(f);
+        const g = ghost.get(k) ?? f.hp;
+        if (g > f.hp + 0.5) {
+          ghost.set(k, Math.max(f.hp, g - Math.max(0.4, f.stats.maxHp * 0.02)));
+          moving = true;
+        } else if (g !== f.hp) {
+          ghost.set(k, f.hp);
+        }
+      }
+      const floatsAlive = liveFloats.some((fl) => now - fl.at < 950);
+      render(now);
+      if (moving || floatsAlive || cur) rafRef.current = requestAnimationFrame(stepAnim);
     };
     stepAnim();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [state, candidates, poses, lunges, background, bump, t]);
+  }, [state, candidates, poses, lunges, floats, background, bump, t]);
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!onPickTarget || !candidates?.length) return;
@@ -328,9 +381,14 @@ function drawFighter(
   active: boolean,
   candidate: boolean,
   transientPose: 'attack' | 'hit' | undefined,
+  flash: boolean,
+  ghostHp: number,
+  now: number,
   onSpriteReady: () => void,
 ) {
-  const r = 58;
+  const size = spriteSize(f.archetypeId); // 体量归一后的绘制边长
+  const half = size / 2;
+  const r = 58; // 圆形占位回退的半径（与体量系数无关）
   const color = fighterColor(f);
   // 期望朝向：在左侧的朝右、在右侧的朝左（都看向中线敌人）。
   const want: 'left' | 'right' = facing === 'left' ? 'right' : 'left';
@@ -340,21 +398,25 @@ function drawFighter(
   // 是否真的拿到了 downed 专用图（拿到则不再用「旋转躺倒」的代偿表现）
   const hasDownedArt = pose === 'downed' && sprite != null && !isMissing(fighterSprite(f.archetypeId, 'downed'));
 
-  if (candidate) {
-    ctx.strokeStyle = '#ffd24a';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([5, 4]);
+  const footY = cy + half - 8; // 脚底基准（阴影/光环共用）
+
+  // 行动者光环 / 可选目标光环：脚下椭圆，带呼吸脉冲（比头顶圆圈更"站在场上"）
+  if (active || candidate) {
+    const pulse = 0.6 + 0.4 * Math.sin(now / 280);
+    ctx.save();
+    ctx.strokeStyle = candidate ? '#ffd24a' : '#f0c33c';
+    ctx.lineWidth = candidate ? 3 : 3.5;
+    ctx.globalAlpha = 0.45 + 0.4 * pulse;
+    ctx.shadowColor = candidate ? '#ffd24a' : '#f0c33c';
+    ctx.shadowBlur = 10 + 8 * pulse;
+    if (candidate) {
+      ctx.setLineDash([7, 6]);
+      ctx.lineDashOffset = -now / 28; // 缓慢旋转的虚线 → "请选我"
+    }
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 8, 0, Math.PI * 2);
+    ctx.ellipse(cx, footY, size * 0.4, size * 0.13, 0, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  if (active) {
-    ctx.strokeStyle = '#f0c33c';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r + 5, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.restore();
   }
 
   ctx.globalAlpha = f.dead ? 0.35 : f.downed ? 0.6 : 1;
@@ -364,7 +426,7 @@ function drawFighter(
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(cx, cy + SPRITE / 2 - 8, SPRITE * 0.32, SPRITE * 0.09, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, footY, size * 0.32, size * 0.09, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -372,7 +434,7 @@ function drawFighter(
   if (sprite) {
     // 真图：按期望朝向决定是否水平翻转。
     // 倒地：有 downed 专用图直接画；没有则回退「idle + 旋转躺倒」的代偿表现。
-    // 死亡：在倒地基础上灰度化。
+    // 死亡：在倒地基础上灰度化。受击瞬间闪白（flash）。
     const flip = shouldFlip(f.archetypeId, want);
     ctx.save();
     ctx.translate(cx, cy);
@@ -383,9 +445,16 @@ function drawFighter(
     ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 5;
     if ((f.downed || f.dead) && !hasDownedArt) ctx.rotate((flip ? -1 : 1) * 0.5); // 倒地微旋（无专用图时）
-    ctx.drawImage(sprite, -SPRITE / 2, -SPRITE / 2, SPRITE, SPRITE);
+    ctx.drawImage(sprite, -half, -half, size, size);
+    if (flash) {
+      // 受击闪白：同图提亮再叠一层
+      ctx.filter = 'brightness(2.4) saturate(0.3)';
+      ctx.globalAlpha = 0.65;
+      ctx.drawImage(sprite, -half, -half, size, size);
+    }
     ctx.filter = 'none';
     ctx.restore();
+    ctx.globalAlpha = f.dead ? 0.35 : f.downed ? 0.6 : 1;
   } else {
     // 回退：圆形占位 + 朝向小三角（缺图 / 加载中）。
     ctx.fillStyle = f.dead ? '#333' : color;
@@ -409,35 +478,108 @@ function drawFighter(
   ctx.globalAlpha = 1;
 
   const badge = f.dead ? '☠' : f.downed ? '⬇' : f.stunned > 0 ? '💫' : '';
+  const topY = cy - Math.max(half, r) - 6; // 头顶基准（按实际绘制体量）
   if (badge) {
     ctx.font = '20px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.fillText(badge, cx, cy - r - 6);
+    ctx.fillText(badge, cx, topY);
   }
 
   // 名字 + 等级（画在角色下方）
   ctx.fillStyle = f.dead ? '#777' : '#fff';
   ctx.font = 'bold 14px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`${f.name} Lv${f.level}`, cx, cy + r + 20);
+  ctx.fillText(`${f.name} Lv${f.level}`, cx, cy + Math.max(half, r) + 18);
 
-  // HP 条画在上方
-  if (!f.dead) drawHpBar(ctx, cx - 52, cy - r - 20, f.hp, f.stats.maxHp);
+  // HP 条画在上方（带伤害残影白条）
+  if (!f.dead) drawHpBar(ctx, cx - 52, topY - 14, f.hp, ghostHp, f.stats.maxHp);
 }
 
-function drawHpBar(ctx: CanvasRenderingContext2D, x: number, y: number, hp: number, maxHp: number) {
+/** HP 条：圆角 + 渐变填充 + 伤害残影（白条停在旧血量、缓缓追上当前值）。 */
+function drawHpBar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  hp: number,
+  ghostHp: number,
+  maxHp: number,
+) {
   const w = 104;
-  const h = 9;
+  const h = 10;
+  const rr = 5;
   const ratio = Math.max(0, Math.min(1, hp / maxHp));
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-  ctx.fillStyle = '#444';
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = ratio > 0.5 ? '#4dd86b' : ratio > 0.2 ? '#f0c33c' : '#ff5555';
-  ctx.fillRect(x, y, w * ratio, h);
+  const ghostRatio = Math.max(ratio, Math.min(1, ghostHp / maxHp));
+  ctx.save();
+  // 底槽（半透明深底 + 细描边）
+  ctx.fillStyle = 'rgba(6,9,16,0.72)';
+  ctx.beginPath();
+  ctx.roundRect(x - 1.5, y - 1.5, w + 3, h + 3, rr + 1.5);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // 伤害残影（白条）：从当前值延伸到旧值
+  if (ghostRatio > ratio + 0.005) {
+    ctx.fillStyle = 'rgba(255,235,220,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w * ghostRatio, h, rr);
+    ctx.fill();
+  }
+  // 当前血量（纵向渐变，按血量分色）
+  if (ratio > 0) {
+    const base = ratio > 0.5 ? ['#5fe87d', '#2f9a4a'] : ratio > 0.2 ? ['#ffd45e', '#c9941f'] : ['#ff7363', '#c2362a'];
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, base[0]!);
+    g.addColorStop(1, base[1]!);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.roundRect(x, y, Math.max(h, w * ratio), h, rr);
+    ctx.fill();
+    // 顶部高光
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, Math.max(h, w * ratio), h / 2.6, rr);
+    ctx.fill();
+  }
+  ctx.restore();
   ctx.fillStyle = '#fff';
   ctx.font = '11px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(`${Math.max(0, Math.ceil(hp))}/${maxHp}`, x + w / 2, y - 4);
+}
+
+/** 跳字：伤害红 / 暴击金大字 / 治疗绿 / MISS 灰，上浮 + 渐隐（900ms 生命周期）。 */
+function drawFloats(
+  ctx: CanvasRenderingContext2D,
+  floats: FloatFx[],
+  pos: Map<string, { x: number; y: number }>,
+  now: number,
+) {
+  const LIFE = 900;
+  for (const fl of floats) {
+    const age = now - fl.at;
+    if (age < 0 || age > LIFE) continue;
+    const p = pos.get(fl.key);
+    if (!p) continue;
+    const t = age / LIFE;
+    const rise = 34 + 52 * t; // 上浮轨迹（减速感来自渐隐）
+    const alpha = age < 120 ? age / 120 : 1 - (age - 120) / (LIFE - 120);
+    const stagger = ((fl.id % 5) - 2) * 9; // 多段连击横向错位，避免叠死
+    const crit = fl.kind === 'crit';
+    const color = crit ? '#ffd24a' : fl.kind === 'damage' ? '#ff8273' : fl.kind === 'heal' ? '#7be08a' : '#aab4c8';
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.font = crit ? '800 30px system-ui, sans-serif' : `800 ${fl.kind === 'miss' ? 17 : 22}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.lineWidth = crit ? 5 : 4;
+    ctx.strokeStyle = 'rgba(10,14,24,0.85)';
+    ctx.fillStyle = color;
+    const tx = p.x + stagger;
+    const ty = p.y - rise - (crit ? 8 : 0);
+    const text = crit ? `${fl.text}!` : fl.text;
+    ctx.strokeText(text, tx, ty);
+    ctx.fillText(text, tx, ty);
+    ctx.restore();
+  }
 }

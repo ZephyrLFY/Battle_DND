@@ -24,7 +24,8 @@ import {
   type AbilityKey,
   type SkillId,
 } from '@italian-brainrot/shared';
-import { useI18n, skillName, skillDesc, abilityLabel, learnReasonText, type Lang } from './i18n.js';
+import { useI18n, skillName, skillDesc, abilityLabel, learnReasonText, passiveInfo, type Lang } from './i18n.js';
+import { AttrHelp } from './AttrHelp.js';
 
 export function BuildEditor({
   poke,
@@ -63,7 +64,10 @@ export function BuildEditor({
           </label>
         </div>
 
-        <div className="col-title">{t.allocTitle}</div>
+        <div className="col-title">
+          {t.allocTitle}
+          <AttrHelp align="left" />
+        </div>
         <div className="abilities">
           {ABILITY_KEYS.map((k) => (
             <AbilityRow
@@ -121,8 +125,25 @@ export function BuildEditor({
         </div>
       </div>
 
-      {/* 右列：技能池 */}
+      {/* 右列：被动 + 技能池 */}
       <div className="build-col build-col-right">
+        {/* 天生被动：不占技能栏、不可选——配技能前先让玩家看到它 */}
+        {(() => {
+          const p = passiveInfo(poke.archetypeId, lang);
+          if (!p) return null;
+          return (
+            <>
+              <div className="skills-title">{t.passiveTitle}</div>
+              <div className="passive-card">
+                <div className="skill-head">
+                  <span className="skill-name">✨ {p.name}</span>
+                  <span className="cost-badge passive">{t.passiveBadge}</span>
+                </div>
+                <div className="skill-desc">{p.desc}</div>
+              </div>
+            </>
+          );
+        })()}
         <div className="skills">
           <div className="skills-title">
             {t.poolTitle}

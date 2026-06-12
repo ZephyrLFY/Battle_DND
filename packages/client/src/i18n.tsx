@@ -31,7 +31,7 @@ const LANG_KEY = 'ui.lang';
 
 const zh = {
   title: '意大利山海经',
-  titleSub: 'Italian Brainrot — 3v3 D&D 队伍战',
+  titleSub: '3v3 D&D 队伍战',
   steps: ['① 选队', '② 养成', '③ 战斗'] as readonly string[],
   // 选队
   pickTeam: '选择你的出战队伍',
@@ -61,6 +61,18 @@ const zh = {
   sigTag: '专属',
   unequip: '✕ 卸下',
   poolTitle: '技能池（按解锁等级排序）',
+  passiveTitle: '天生被动（不占技能栏）',
+  passiveBadge: '被动',
+  infoSig: '✦ 签名技能',
+  infoPassive: '✨ 天生被动',
+  infoAria: '技能介绍',
+  attrHelpAria: '属性说明',
+  strTitle: '力量 STR',
+  strHelp: '决定攻击的命中加值与伤害加值——输出核心。',
+  dexTitle: '敏捷 DEX',
+  dexHelp: '决定护甲 AC（更难被命中，且闪避敌方攻击会回 1 点能量）与先攻（出手顺序）。',
+  conTitle: '体质 CON',
+  conHelp: '决定生命上限与吸血比例（普攻命中后按造成伤害的比例回血）。',
   barFull: ' · 技能栏已满',
   noLearnable: '已无可学技能',
   unlocked: '已解锁',
@@ -112,8 +124,10 @@ const zh = {
   // 战场 canvas
   stageEmpty: '配好队伍后点「开始战斗」',
   initOrder: '先攻顺序 ▶',
-  // 语言切换
+  // 语言/主题切换
   langToggleTitle: 'Switch to English',
+  themeToLight: '切换到日间模式',
+  themeToDark: '切换到夜间模式',
 };
 
 type Dict = typeof zh;
@@ -148,6 +162,18 @@ const en: Dict = {
   sigTag: 'Signature',
   unequip: '✕ Unequip',
   poolTitle: 'Skill pool (sorted by unlock level)',
+  passiveTitle: 'Innate passive (no skill slot)',
+  passiveBadge: 'Passive',
+  infoSig: '✦ Signature skill',
+  infoPassive: '✨ Innate passive',
+  infoAria: 'Kit overview',
+  attrHelpAria: 'Attribute guide',
+  strTitle: 'STR · Strength',
+  strHelp: 'Determines your to-hit bonus and damage bonus — the core offensive stat.',
+  dexTitle: 'DEX · Dexterity',
+  dexHelp: 'Determines AC (harder to hit — dodging an enemy attack also grants 1 energy) and initiative (turn order).',
+  conTitle: 'CON · Constitution',
+  conHelp: 'Determines max HP and lifesteal rate (heal a portion of damage dealt on basic hits).',
   barFull: ' · Skill bar full',
   noLearnable: 'Nothing left to learn',
   unlocked: 'Unlocked',
@@ -197,6 +223,8 @@ const en: Dict = {
   stageEmpty: 'Pick your team, then hit "Start battle"',
   initOrder: 'Initiative ▶',
   langToggleTitle: '切换为中文',
+  themeToLight: 'Switch to light mode',
+  themeToDark: 'Switch to dark mode',
 };
 
 export const UI: Record<Lang, Dict> = { zh, en };
@@ -215,7 +243,7 @@ const SKILL_EN: Record<SkillId, { name: string; desc: string }> = {
   heal: { name: 'Heal', desc: 'Restore 2d4 + CON mod HP to one ally (costs 2 energy; not usable on the fallen).' },
   war_cry: { name: 'War Cry', desc: 'All allies gain +2 to hit and +2 damage for 1 turn.' },
   firestorm: { name: 'Firestorm', desc: 'Roll to hit every enemy for 2d6 (AOE); targets hit are set ablaze, burning 1d3 per turn for 2 turns.' },
-  revive: { name: 'Revive', desc: 'Raise a downed ally with 1d8 + 15% max HP (only works on the downed).' },
+  revive: { name: 'Revive', desc: 'Raise a downed ally with 15% max HP (only works on the downed).' },
   sig_tung_combo: { name: 'Tung-Tung-Tung Combo', desc: '[Tung only] Strike 3 times in one turn at cumulative −2 to hit (+0 / −2 / −4).' },
   sig_bombombini_blast: { name: 'Kamikaze Blast', desc: '[Bombombini only] 4d6 auto-hit on one target; recoil equal to 3/4 of damage dealt. Fuse stacks boost it (and the recoil).' },
   sig_trippi_hiss: { name: 'Hiss', desc: '[Trippi only] Cat intimidation (free): a scratch (1d4); on hit the target is terrified and stunned next turn.' },
@@ -267,6 +295,92 @@ const BLURB_EN: Record<string, string> = {
 export function blurb(archetypeId: string, lang: Lang): string {
   if (lang === 'en') return BLURB_EN[archetypeId] ?? '';
   return fighterBlurb(archetypeId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 角色被动展示文案（逻辑在 shared/passives.ts，这里是 UI 描述；与 CHARACTERS.md 同步）
+// ─────────────────────────────────────────────────────────────────────────
+
+const PASSIVE_INFO: Record<string, { name: string; nameEn: string; desc: string; descEn: string }> = {
+  TungSahur: {
+    name: '不眠的梆子',
+    nameEn: 'Sleepless Drumbeat',
+    desc: '普攻命中叠 1 层「敲击」（每层伤害 +1，最多 3 层）；一整回合没出手则清空。连续敲打，越打越狠。',
+    descEn: 'Basic hits stack "Knock" (+1 damage per stack, max 3); stacks reset after an idle turn. Keep swinging.',
+  },
+  CappuccinoAssassino: {
+    name: '咖啡与舞伴',
+    nameEn: 'Coffee & Partner',
+    desc: '队伍中 Ballerina Cappuccina 存活时全属性 ×1.3；BC 阵亡后 ×1.5（为爱复仇）；攻击敌方 BC 时伤害 ×0.9（下不去手）。',
+    descEn: 'With Ballerina Cappuccina alive on your team, all stats ×1.3; ×1.5 after she falls (revenge). Deals ×0.9 damage to an enemy BC.',
+  },
+  BombardiroCrocodilo: {
+    name: '装甲蒙皮',
+    nameEn: 'Armored Hull',
+    desc: '常驻减伤 1（每次受击减免 1 点伤害）。',
+    descEn: 'Permanent damage reduction: every hit taken deals 1 less damage.',
+  },
+  LiriliLarila: {
+    name: '仙人掌尖刺',
+    nameEn: 'Cactus Spikes',
+    desc: '常驻反伤：被命中时反弹 1 点伤害给攻击者。',
+    descEn: 'Thorns: attackers take 1 damage whenever they hit you.',
+  },
+  BrrBrrPatapim: {
+    name: '林间回响',
+    nameEn: 'Forest Echo',
+    desc: '任意友方释放增益/治疗类技能时，免费为该友方回复 1d4（森林的回声）。',
+    descEn: 'Whenever an ally casts a support skill, heal that ally 1d4 for free (the forest echoes).',
+  },
+  BombombiniGusini: {
+    name: '引信',
+    nameEn: 'Fuse',
+    desc: '每次受击叠 1 层「火药」；下一个耗能技能每层 +2 伤害，释放后清空（一次性引爆）。',
+    descEn: 'Stacks "Gunpowder" when hit; your next energy-costing skill deals +2 damage per stack, then detonates all stacks.',
+  },
+  TrippiTroppi: {
+    name: '九命怪猫',
+    nameEn: 'Nine Lives',
+    desc: '首次被打至倒地时不倒，改以 15% 最大生命存活并清除负面，同时炸毛反扑（固定总伤由存活敌人分摊）。整场仅一次。',
+    descEn: 'The first time you would go down, survive at 15% max HP instead, cleanse debuffs, and lash out (fixed damage split among living enemies). Once per battle.',
+  },
+  BonecaAmbalabu: {
+    name: '轮胎滚压',
+    nameEn: 'Tire Roll',
+    desc: '普攻暴击时额外造成一段碾压伤害。',
+    descEn: 'Basic-attack crits deal an extra burst of crush damage.',
+  },
+  FrigoCamelo: {
+    name: '冷藏续航',
+    nameEn: 'Cold Storage',
+    desc: '每回合开始回复 1d6 生命。',
+    descEn: 'Regenerate 1d6 HP at the start of each of your turns.',
+  },
+  TralaleroTralala: {
+    name: '三足疾行',
+    nameEn: 'Three-Legged Sprint',
+    desc: '先攻 +5（大概率先手，但不绝对）。',
+    descEn: '+5 initiative — usually strikes first, but not guaranteed.',
+  },
+  BallerinaCappuccina: {
+    name: '为舞伴起舞',
+    nameEn: 'Dance for the Partner',
+    desc: '自身释放的所有增益效果（含治疗术）对 Cappuccino Assassino 效果增强。',
+    descEn: 'All buffs and heals you cast are amplified when received by Cappuccino Assassino.',
+  },
+  ChimpanziniBananini: {
+    name: '香蕉外壳',
+    nameEn: 'Banana Shell',
+    desc: 'HP 首次跌破 75% / 50% / 25% 各破壳一次：每次 +3 能量并获得当回合减伤。',
+    descEn: 'Shell cracks once each at 75% / 50% / 25% HP: gain +3 energy and damage reduction for the turn.',
+  },
+};
+
+/** 按语言取角色被动的名称与描述（无则 undefined）。养成页被动卡 / 选人页 (i) 速览共用。 */
+export function passiveInfo(archetypeId: string, lang: Lang): { name: string; desc: string } | undefined {
+  const p = PASSIVE_INFO[archetypeId];
+  if (!p) return undefined;
+  return lang === 'en' ? { name: p.nameEn, desc: p.descEn } : { name: p.name, desc: p.desc };
 }
 
 /** 被动/技能 flat 伤害的骰子 spec 中文标签 → 英文（出现在战斗日志的伤害行）。 */
