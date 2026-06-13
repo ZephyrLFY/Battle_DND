@@ -11,7 +11,7 @@
 
 ## 快速开始
 
-**在线试玩**：https://zephyrlfy.github.io/Battle_Pokemon/ （master 每次合并自动部署）
+**在线试玩**：https://zephyrlfy.github.io/Battle_DND/ （master 每次合并自动部署）
 
 本地开发：
 
