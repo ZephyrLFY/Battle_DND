@@ -36,7 +36,7 @@ jobs:
       - name: Build client
         run: npm run build
         env:
-          DEPLOY_BASE: /Battle_Pokemon/ # GitHub Pages 子路径（vite base + 运行时资产 URL 前缀）
+          DEPLOY_BASE: /Battle_DND/ # GitHub Pages 子路径（vite base + 运行时资产 URL 前缀）
 
       - uses: actions/configure-pages@v5
 
