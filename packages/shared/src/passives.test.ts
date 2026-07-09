@@ -274,20 +274,33 @@ describe('Phase 2 被动', () => {
     expect(firstCount).toBeGreaterThan(6);
   });
 
-  it('Chimpanzini 香蕉外壳：跌破 75/50/25 各 +3 能量，每线仅一次', () => {
+  it('Chimpanzini 香蕉外壳：受击跨越 75/50/25 血线破壳（+3/线，无上限），可重复触发', () => {
     const { state } = createBattle([mk('ChimpanziniBananini', 10)], [mk('TungSahur', 10)], 1);
     const cb = fighter(state, 'a', 'ChimpanziniBananini');
     const p = passiveOf('ChimpanziniBananini')!;
     const enemy = fighter(state, 'b', 'TungSahur');
+    const max = cb.stats.maxHp;
+    // 模拟一次「实际扣 raw 血后」的受击回调：受击前 = hp + raw
+    const hitTo = (hpAfter: number, raw: number) => {
+      cb.hp = hpAfter;
+      p.onTakeHit!(pctx(state, cb), enemy, raw, false);
+    };
     cb.energy = 0;
-    // 跌到 60%（跨过 75 一条线）→ +3（封顶 maxEnergy）
-    cb.hp = Math.floor(cb.stats.maxHp * 0.6);
-    p.onTakeHit!(pctx(state, cb), enemy, 5, false);
-    expect(cb.energy).toBe(Math.min(cb.stats.maxEnergy, 3));
-    // 同档再受击不重复触发
-    const after = cb.energy;
-    p.onTakeHit!(pctx(state, cb), enemy, 5, false);
-    expect(cb.energy).toBe(after);
+    // 90% → 80%：没跨线 → 不触发
+    hitTo(Math.floor(max * 0.8), Math.ceil(max * 0.1));
+    expect(cb.energy).toBe(0);
+    // 80% → 70%：跨 75 线 → +3
+    hitTo(Math.floor(max * 0.7), Math.floor(max * 0.8) - Math.floor(max * 0.7));
+    expect(cb.energy).toBe(3);
+    // 70% → 65%：同区间没跨线 → 不触发
+    hitTo(Math.floor(max * 0.65), Math.floor(max * 0.7) - Math.floor(max * 0.65));
+    expect(cb.energy).toBe(3);
+    // 奶回 80% 再被打到 70%：再次跨 75 线 → 可重复触发，再 +3
+    hitTo(Math.floor(max * 0.7), Math.floor(max * 0.8) - Math.floor(max * 0.7));
+    expect(cb.energy).toBe(6);
+    // 70% → 20%：一击连跨 50、25 两线 → +6（能量无上限，不封顶）
+    hitTo(Math.floor(max * 0.2), Math.floor(max * 0.7) - Math.floor(max * 0.2));
+    expect(cb.energy).toBe(12);
   });
 
   it('Patapim 林间回响：友方放 support 时给该施法友方回血（端到端）', () => {

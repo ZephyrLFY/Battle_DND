@@ -410,7 +410,10 @@ export function genericSkillAblation(
         return sig(id); // 等级不够解锁 → 退回纯签名（该角色不贡献差异）
       }
     });
-    return { id: s, withRate: round2(withRate), withoutRate: round2(ctrl), delta: round2(withRate - ctrl) };
+    // delta 基于已舍入的两值计算，保证 delta === withRate - withoutRate 恒成立
+    const w = round2(withRate);
+    const wo = round2(ctrl);
+    return { id: s, withRate: w, withoutRate: wo, delta: round2(w - wo) };
   });
 }
 
@@ -442,7 +445,9 @@ export function signatureAblation(
     };
     const withRate = runFocal(sig);
     const withoutRate = runFocal(stripped);
-    rows.push({ id: focal, withRate: round2(withRate), withoutRate: round2(withoutRate), delta: round2(withRate - withoutRate) });
+    const w = round2(withRate);
+    const wo = round2(withoutRate);
+    rows.push({ id: focal, withRate: w, withoutRate: wo, delta: round2(w - wo) });
   }
   return rows;
 }

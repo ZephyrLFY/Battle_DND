@@ -74,10 +74,10 @@ export function fighterValue(f: FighterRT): number {
   // 残血段加权：HP 的最后 1/4 每点更值钱（保命/斩杀的非线性）。
   v += Math.min(f.hp, f.stats.maxHp * 0.25) * VW.lowHpFactor;
 
-  // 能量边际递减：最后 2 格半价（满格后普攻不再回能、资源会溢出，
-  // 囤在上限附近的能量应该被花掉——否则 AI 会在满格时仍舍不得放带 rider 的技能）。
+  // 能量边际递减：能量已无硬上限，但估值必须递减——接近基准线（maxEnergy）半价、
+  // 超过基准线 1/4 价。否则 AI 会觉得"囤能=稳定增值"而永远舍不得放技能。
   const cap = f.stats.maxEnergy;
-  for (let i = 1; i <= f.energy; i++) v += (i > cap - 2 ? 0.5 : 1) * VW.energy;
+  for (let i = 1; i <= f.energy; i++) v += (i > cap ? 0.25 : i > cap - 2 ? 0.5 : 1) * VW.energy;
   v += f.stunned * VW.stunnedTurn;
   if (f.charged) v += VW.charged;
   if (f.rallyTurns > 0) v += VW.rally;

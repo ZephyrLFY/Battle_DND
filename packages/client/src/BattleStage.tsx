@@ -68,6 +68,11 @@ function spriteSize(archetypeId: string): number {
   return SPRITE * (spriteMeta[archetypeId]?.scale ?? 1);
 }
 
+/** 队伍规模 → 绘制放大系数：人少时舞台空，角色相应放大（3 人保持原样）。 */
+function teamBoost(n: number): number {
+  return n <= 1 ? 1.4 : n === 2 ? 1.18 : 1;
+}
+
 /** 取角色某姿势的 sprite；姿势图缺失/加载中回退 idle 图。 */
 function getSprite(id: string, pose: Pose, onReady: () => void): HTMLImageElement | null {
   if (pose !== 'idle') {
@@ -84,6 +89,8 @@ interface Slot {
   f: FighterRT;
   x: number;
   y: number;
+  /** 点击命中半径（随队伍规模放大系数缩放）。 */
+  r: number;
 }
 
 /**
@@ -147,16 +154,21 @@ export function BattleStage({
     const candKeys = new Set((candidates ?? []).map((r) => `${r.team}:${r.id}`));
     const keyOf = (f: FighterRT) => `${f.team}:${f.id}`;
 
-    // 1) 布局：每队 3 人竖排错位 → 「家位置」；突进者的「期望位置」= 目标面前
+    // 1) 布局：每队竖排错位 → 「家位置」；突进者的「期望位置」= 目标面前。
+    //    按队伍规模自适应：人少时垂直居中、向中线靠拢、绘制放大（见 teamBoost）。
     const home = new Map<string, { x: number; y: number }>();
     const fighters: { f: FighterRT; team: 'a' | 'b' }[] = [];
     const areaTop = INIT_BAR_H + 56;
     const areaBottom = H - 46;
-    const gap = (areaBottom - areaTop) / 3;
+    const boostOf = { a: teamBoost(state.teams.a.length), b: teamBoost(state.teams.b.length) };
     (['a', 'b'] as const).forEach((team) => {
-      state.teams[team].forEach((f, i) => {
+      const members = state.teams[team];
+      const n = Math.max(1, members.length);
+      const gap = (areaBottom - areaTop) / n; // n=3 时与原布局完全一致
+      const inset = n <= 1 ? 330 : n === 2 ? 260 : 210; // 人少 → 离中线更近
+      members.forEach((f, i) => {
         const y = areaTop + gap * i + gap / 2;
-        const baseX = team === 'a' ? 210 : W - 210;
+        const baseX = team === 'a' ? inset : W - inset;
         const inward = team === 'a' ? 1 : -1;
         const x = baseX + (i % 2 === 1 ? inward * 185 : 0);
         home.set(keyOf(f), { x, y });
@@ -171,7 +183,7 @@ export function BattleStage({
       if (tpos && !f.downed && !f.dead) {
         // 站到目标面前：从自己一侧贴近（a 队从目标左侧、b 队从右侧）
         const side = f.team === 'a' ? -1 : 1;
-        desired.set(k, { x: tpos.x + side * spriteSize(f.archetypeId) * 0.85, y: tpos.y });
+        desired.set(k, { x: tpos.x + side * spriteSize(f.archetypeId) * boostOf[f.team] * 0.85, y: tpos.y });
         lungeKeys.add(k);
       } else {
         desired.set(k, home.get(k)!);
@@ -197,13 +209,13 @@ export function BattleStage({
       for (const { f, team } of sorted) {
         const k = keyOf(f);
         const p = pos.get(k)!;
-        slotsRef.current.push({ f, x: p.x, y: p.y });
+        slotsRef.current.push({ f, x: p.x, y: p.y, r: 78 * boostOf[team] });
         const active = cur?.id === f.id && cur?.team === f.team;
         // 受击闪白：该角色 160ms 内有伤害跳字 → 命中瞬间
         const flash = liveFloats.some(
           (fl) => fl.key === k && (fl.kind === 'damage' || fl.kind === 'crit') && now - fl.at < 160,
         );
-        drawFighter(ctx, f, p.x, p.y, team === 'a' ? 'left' : 'right', active, candKeys.has(k), poses?.[k], flash, ghost.get(k) ?? f.hp, now, onSpriteReady);
+        drawFighter(ctx, f, p.x, p.y, team === 'a' ? 'left' : 'right', active, candKeys.has(k), poses?.[k], flash, ghost.get(k) ?? f.hp, now, boostOf[team], onSpriteReady);
       }
       // 跳字最后画（盖在所有角色之上）
       drawFloats(ctx, liveFloats, pos, now);
@@ -254,7 +266,7 @@ export function BattleStage({
     const candKeys = new Set(candidates.map((r) => `${r.team}:${r.id}`));
     for (const s of slotsRef.current) {
       if (!candKeys.has(`${s.f.team}:${s.f.id}`)) continue;
-      if (Math.hypot(mx - s.x, my - s.y) <= 78) {
+      if (Math.hypot(mx - s.x, my - s.y) <= s.r) {
         onPickTarget({ team: s.f.team, id: s.f.id });
         return;
       }
@@ -387,11 +399,12 @@ function drawFighter(
   flash: boolean,
   ghostHp: number,
   now: number,
+  boost: number, // 队伍规模放大系数（人少 → 放大）
   onSpriteReady: () => void,
 ) {
-  const size = spriteSize(f.archetypeId); // 体量归一后的绘制边长
+  const size = spriteSize(f.archetypeId) * boost; // 体量归一 × 规模放大后的绘制边长
   const half = size / 2;
-  const r = 58; // 圆形占位回退的半径（与体量系数无关）
+  const r = 58 * boost; // 圆形占位回退的半径（与体量系数无关）
   const color = fighterColor(f);
   // 期望朝向：在左侧的朝右、在右侧的朝左（都看向中线敌人）。
   const want: 'left' | 'right' = facing === 'left' ? 'right' : 'left';

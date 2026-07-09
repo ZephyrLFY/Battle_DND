@@ -388,9 +388,9 @@ function perform(
     const target = find(state, action.target);
     const hit = target ? doAttack(state, actor, target, rng, emit, { charged: actor.charged }) : false;
     actor.charged = false;
-    // 普攻攒能量：命中才 +1（上限 maxEnergy）。miss 不回，攒能量有风险。
-    if (hit && actor.energy < actor.stats.maxEnergy) {
-      actor.energy = Math.min(actor.stats.maxEnergy, actor.energy + 1);
+    // 普攻攒能量：命中才 +1（无上限，可以囤）。miss 不回，攒能量有风险。
+    if (hit) {
+      actor.energy += 1;
       emit({ t: 'energy', who: refOf(actor), delta: 1, now: actor.energy });
     }
     return;
@@ -503,8 +503,8 @@ function doAttack(
 
   if (!hit) {
     // 闪避回能：攻击落空时，受击方 +1 能量（高 AC/敏捷向的"防御转资源"，与普攻命中回能对偶）。
-    if (!target.downed && !target.dead && target.energy < target.stats.maxEnergy) {
-      target.energy = Math.min(target.stats.maxEnergy, target.energy + 1);
+    if (!target.downed && !target.dead) {
+      target.energy += 1;
       emit({ t: 'energy', who: refOf(target), delta: 1, now: target.energy });
     }
     passiveOf(target.archetypeId)?.onMissed?.(passiveCtx(state, target, rng, emit), actor);

@@ -383,7 +383,7 @@ function TeamPanel({ fighters, lang }: { fighters: FighterRT[]; lang: Lang }) {
                   {f.name} <small>Lv{f.level}</small>
                 </div>
                 <div className="fc-sub">
-                  ⚡ {f.energy}/{f.stats.maxEnergy} · AC {f.stats.ac + f.acBonus} · {t.fcHit} +{f.stats.toHit} · {t.fcDmg} +{f.stats.dmgBonus}
+                  ⚡ {f.energy} · AC {f.stats.ac + f.acBonus} · {t.fcHit} +{f.stats.toHit} · {t.fcDmg} +{f.stats.dmgBonus}
                 </div>
               </div>
             </div>

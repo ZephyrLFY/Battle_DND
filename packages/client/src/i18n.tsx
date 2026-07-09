@@ -54,7 +54,6 @@ const zh = {
   statHit: '命中',
   statDmg: '伤害',
   statInit: '先攻',
-  statEnergyCap: '⚡ 能量上限',
   statLifesteal: '🩸 吸血',
   learnedTitle: (a: number, b: number) => `已学技能（${a} / ${b}）`,
   emptySlot: '空技能位',
@@ -155,7 +154,6 @@ const en: Dict = {
   statHit: 'Hit',
   statDmg: 'Dmg',
   statInit: 'Init',
-  statEnergyCap: '⚡ Max energy',
   statLifesteal: '🩸 Lifesteal',
   learnedTitle: (a: number, b: number) => `Learned skills (${a} / ${b})`,
   emptySlot: 'Empty slot',
@@ -371,8 +369,8 @@ const PASSIVE_INFO: Record<string, { name: string; nameEn: string; desc: string;
   ChimpanziniBananini: {
     name: '香蕉外壳',
     nameEn: 'Banana Shell',
-    desc: 'HP 首次跌破 75% / 50% / 25% 各破壳一次：每次 +3 能量并获得当回合减伤。',
-    descEn: 'Shell cracks once each at 75% / 50% / 25% HP: gain +3 energy and damage reduction for the turn.',
+    desc: '受击致 HP 跌破 75% / 50% / 25% 血线时破壳：每线 +3 能量并获得当回合减伤。可重复触发——被奶回血线以上再跌破，会再次破壳。',
+    descEn: 'Shell cracks when a hit drops HP below 75% / 50% / 25%: +3 energy per line and damage reduction for the turn. Re-triggers — heal back above a line and break it again.',
   },
 };
 

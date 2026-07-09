@@ -234,25 +234,21 @@ export const PASSIVES: Record<string, Passive> = {
   // （BC 存活与否由 CA 被动读取，无需 BC 侧主动钩子。）
 
   // 🍌🐒 Chimpanzini Bananini ——「香蕉外壳」
-  // HP 首次跌破 75%/50%/25% 各破壳一次（共 3 次）：每次 +1 能量 + 本回合减伤。
+  // 受击致 HP 跌破 75%/50%/25% 血线时破壳：每线 +3 能量 + 本回合减伤。
+  // 无「首次」限制——被治疗拉回线上后再次跌破会再次触发，
+  // 由此催生「奶妈循环喂猩猩 → 反复破壳爆发」的团战 build（配合能量无上限）。
+  // 注：只看「这一击是否跨线」（受击前 > 线 ≥ 受击后）；灼烧等 DoT 掉血不触发（不算受击）。
   ChimpanziniBananini: {
-    onTakeHit: (ctx) => {
+    onTakeHit: (ctx, _attacker, raw) => {
       if (ctx.self.dead || ctx.self.downed) return;
-      const ratio = ctx.self.hp / ctx.self.stats.maxHp;
+      const max = ctx.self.stats.maxHp;
+      const before = (ctx.self.hp + raw) / max; // onTakeHit 的 raw = 实际扣血量 → 反推受击前
+      const after = ctx.self.hp / max;
       const lines = [0.75, 0.5, 0.25];
-      let mask = getStack(ctx.self, 'chimpanzini.shell'); // 位掩码：bit0=75/bit1=50/bit2=25
-      let fired = 0;
-      lines.forEach((line, i) => {
-        const bit = 1 << i;
-        if (!(mask & bit) && ratio <= line) {
-          mask |= bit;
-          fired++;
-        }
-      });
+      const fired = lines.filter((line) => before > line && after <= line).length;
       if (fired > 0) {
-        setStack(ctx.self, 'chimpanzini.shell', mask);
         const gain = fired * 3; // 每条线 +3 能量
-        ctx.self.energy = Math.min(ctx.self.stats.maxEnergy, ctx.self.energy + gain);
+        ctx.self.energy += gain;
         ctx.self.stoneTurns = Math.max(ctx.self.stoneTurns, 2);
         ctx.self.stoneAmount = Math.max(ctx.self.stoneAmount, 3);
         ctx.emit({ t: 'buff', who: ref(ctx.self), note: `破壳！+${gain} 能量，进入战斗形态（减伤）`, noteEn: `Shell break! +${gain} energy, battle form (damage reduction)` });

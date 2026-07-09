@@ -45,11 +45,9 @@ export const SKILL_EFFECTS: Record<SkillId, SkillEffect> = {
     ctx.actor.acBonusTurns = 2; // 2 因本方回合开始先衰减 1 → 覆盖到自己下回合开始
     ctx.actor.thorns = 1;
     // 防御转资源：回 2 点能量（普攻才回 1，放弃这回合输出必须更划算）。
-    const before = ctx.actor.energy;
-    ctx.actor.energy = Math.min(ctx.actor.stats.maxEnergy, ctx.actor.energy + 2);
-    const gained = ctx.actor.energy - before;
-    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `本回合 AC+3、反弹伤害，回 ${gained} 能量`, noteEn: `AC +3 this turn, thorns up, +${gained} energy` });
-    if (gained > 0) ctx.emit({ t: 'energy', who: ref(ctx.actor), delta: gained, now: ctx.actor.energy });
+    ctx.actor.energy += 2;
+    ctx.emit({ t: 'buff', who: ref(ctx.actor), note: `本回合 AC+3、反弹伤害，回 2 能量`, noteEn: `AC +3 this turn, thorns up, +2 energy` });
+    ctx.emit({ t: 'energy', who: ref(ctx.actor), delta: 2, now: ctx.actor.energy });
   },
   // —— 佯攻（cost 0）：小伤 + 破甲，给队友铺路 ——
   feint: (ctx) => {
