@@ -69,6 +69,12 @@ export function applyEventToView(view: BattleState, ev: BattleEvent): BattleStat
       if (w) w.energy = ev.now;
       break;
     }
+    case 'stack': {
+      // 被动计数（敲击/火药层数、九命）：折叠进显示态，驱动战场徽章/面板 pill。
+      const w = find(view, ev.who);
+      if (w) w.passiveState[ev.key] = ev.n;
+      break;
+    }
     case 'downed': {
       const w = find(view, ev.who);
       if (w) {

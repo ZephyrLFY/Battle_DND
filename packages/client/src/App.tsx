@@ -13,7 +13,7 @@ import { TeamCarousel, emptyTeam } from './TeamCarousel.js';
 import { BuildEditor } from './BuildEditor.js';
 import { BattleStage } from './BattleStage.js';
 import { useBattle } from './useBattle.js';
-import { backgroundUrl, fighterSprite } from './presentation.js';
+import { backgroundUrl, fighterSprite, stackBadges } from './presentation.js';
 import { useI18n, skillName, skillDesc, actionReason, bgName, type Lang } from './i18n.js';
 import { eventToLines } from './battleLog.js';
 
@@ -374,6 +374,7 @@ function TeamPanel({ fighters, lang }: { fighters: FighterRT[]; lang: Lang }) {
       {fighters.map((f) => {
         const hpRatio = Math.max(0, Math.min(1, f.hp / f.stats.maxHp));
         const status = f.dead ? t.statusDead : f.downed ? t.statusDowned(f.downedTurns) : f.stunned > 0 ? t.statusStunned : '';
+        const badges = f.dead ? [] : stackBadges(f);
         return (
           <div key={f.id} className={`fighter-card ${f.dead ? 'dead' : f.downed ? 'downed' : ''}`}>
             <div className="fc-head">
@@ -391,6 +392,16 @@ function TeamPanel({ fighters, lang }: { fighters: FighterRT[]; lang: Lang }) {
               <div className="fc-hpfill" style={{ width: `${hpRatio * 100}%` }} />
               <span className="fc-hptext">
                 {Math.max(0, Math.ceil(f.hp))}/{f.stats.maxHp}
+                {badges.map((b) => (
+                  <span
+                    key={b.label}
+                    className="fc-hpstack"
+                    title={`${lang === 'en' ? b.labelEn : b.label} ×${b.n} — ${lang === 'en' ? b.descEn : b.desc}`}
+                  >
+                    {b.icon}
+                    {b.n > 1 ? `×${b.n}` : ''}
+                  </span>
+                ))}
               </span>
             </div>
             <div className="fc-skills">

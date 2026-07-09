@@ -38,6 +38,67 @@ export function backgroundUrl(name: string): string {
   return `${BASE}backgrounds/${name}.webp`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// 被动计数可视化：passiveState 里的特殊计数 → 战场徽章 / 面板文字。
+// 新增可视化计数时在 STACK_DEFS 加一条即可（战场 pill 和队伍面板自动生效）。
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 一条被动计数徽章（n 已经过 value 变换，>0 才会返回）。 */
+export interface StackBadge {
+  icon: string;
+  n: number;
+  label: string;
+  labelEn: string;
+  /** 悬停简要说明（该计数的机制一句话）。 */
+  desc: string;
+  descEn: string;
+}
+
+const STACK_DEFS: {
+  /** 只有该 archetype 显示（passiveState 是通用容器，必须按拥有者过滤）。 */
+  owner: string;
+  key: string;
+  icon: string;
+  label: string;
+  labelEn: string;
+  desc: string;
+  descEn: string;
+  /** 原始值 → 显示值（如九命：0=未用 → 显示 1 条命；1=已用 → 不显示）。 */
+  value?: (n: number) => number;
+}[] = [
+  {
+    owner: 'TungSahur', key: 'tung.hits', icon: '🥁',
+    label: '敲击层数', labelEn: 'Drum stacks',
+    desc: '命中时每层追加 1 点伤害，随后 +1 层（上限 3）；一整回合未出手或释放签名连打后清空。',
+    descEn: 'Each hit deals +1 damage per stack, then gains a stack (max 3); resets after an idle turn or the signature combo.',
+  },
+  {
+    owner: 'BombombiniGusini', key: 'bombombini.gunpowder', icon: '🧨',
+    label: '火药层数', labelEn: 'Gunpowder stacks',
+    desc: '受击 +1 层；下一个耗能技能命中时每层 +2 伤害，释放后引爆清空。',
+    descEn: 'Gains a stack when hit; next energy skill adds +2 damage per stack on hit, then detonates all.',
+  },
+  {
+    owner: 'TrippiTroppi', key: 'trippi.ninthUsed', icon: '🐱',
+    label: '九命待发', labelEn: 'Nine lives ready',
+    desc: '首次被打至倒地时不倒，以 15% 生命存活并清除负面（整场一次）。',
+    descEn: 'First time going down: stays up at 15% HP and clears debuffs (once per battle).',
+    value: (n) => (n > 0 ? 0 : 1),
+  },
+];
+
+/** 该角色当前应显示的被动计数徽章（值为 0 的不显示）。 */
+export function stackBadges(f: Pick<FighterRT, 'archetypeId' | 'passiveState'>): StackBadge[] {
+  const out: StackBadge[] = [];
+  for (const d of STACK_DEFS) {
+    if (d.owner !== f.archetypeId) continue;
+    const raw = f.passiveState[d.key] ?? 0;
+    const n = d.value ? d.value(raw) : raw;
+    if (n > 0) out.push({ icon: d.icon, n, label: d.label, labelEn: d.labelEn, desc: d.desc, descEn: d.descEn });
+  }
+  return out;
+}
+
 /**
  * 角色一句话简介（选队转盘展示用）。取自 CHARACTERS.md 的形象描述，浓缩成一行。
  * 表现层文案，放 client，不污染 shared。

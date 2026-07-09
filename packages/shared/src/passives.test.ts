@@ -80,6 +80,20 @@ describe('Tung Sahur 被动「不眠的梆子」', () => {
     }
     expect(sawStack).toBe(true);
   });
+
+  it('释放签名连打后敲击层数清空（轮4：爆发/叠层二选一）', () => {
+    const { state } = createBattle([mk('TungSahur', 8, ['sig_tung_combo'])], [mk('TrippiTroppi', 8)], 7);
+    const tung = fighter(state, 'a', 'TungSahur');
+    const p = passiveOf('TungSahur')!;
+    setStack(tung, 'tung.hits', 3);
+    tung.energy = 5;
+    p.onCastSpell!(pctx(state, tung), 'sig_tung_combo');
+    expect(getStack(tung, 'tung.hits')).toBe(0);
+    // 非签名耗能技能不清层
+    setStack(tung, 'tung.hits', 2);
+    p.onCastSpell!(pctx(state, tung), 'heal');
+    expect(getStack(tung, 'tung.hits')).toBe(2);
+  });
 });
 
 describe('签名技能学习门禁', () => {
