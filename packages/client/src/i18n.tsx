@@ -303,8 +303,8 @@ const PASSIVE_INFO: Record<string, { name: string; nameEn: string; desc: string;
   TungSahur: {
     name: '不眠的梆子',
     nameEn: 'Sleepless Drumbeat',
-    desc: '普攻命中叠 1 层「敲击」（每层伤害 +1，最多 3 层）；一整回合没出手则清空。连续敲打，越打越狠。',
-    descEn: 'Basic hits stack "Knock" (+1 damage per stack, max 3); stacks reset after an idle turn. Keep swinging.',
+    desc: '普攻命中叠 1 层「敲击」（每层伤害 +1，最多 3 层）；一整回合没出手、或释放签名连打后清空。连续敲打，越打越狠。',
+    descEn: 'Basic hits stack "Knock" (+1 damage per stack, max 3); stacks reset after an idle turn or after unleashing the signature combo. Keep swinging.',
   },
   CappuccinoAssassino: {
     name: '咖啡与舞伴',

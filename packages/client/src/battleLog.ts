@@ -79,6 +79,9 @@ export function eventToLines(ev: BattleEvent, lang: Lang = 'zh'): string[] {
     case 'buff':
       return [`✨ ${en ? (ev.noteEn ?? ev.note) : ev.note}`];
 
+    case 'stack':
+      return []; // 被动计数变化由战场徽章/面板 pill 可视化，不产生日志行
+
     case 'downed':
       return [en ? `⬇ ${who(ev.who, lang)} goes down!` : `⬇ ${who(ev.who, lang)} 倒地！`];
 

@@ -6,7 +6,7 @@ import {
   type FighterRT,
   type FighterRef,
 } from '@italian-brainrot/shared';
-import { fighterColor, fighterSprite, shouldFlip, type Pose, type PoseMap, type LungeMap, type FloatFx } from './presentation.js';
+import { fighterColor, fighterSprite, shouldFlip, stackBadges, type StackBadge, type Pose, type PoseMap, type LungeMap, type FloatFx } from './presentation.js';
 import { useI18n } from './i18n.js';
 
 const W = 1240;
@@ -93,6 +93,15 @@ interface Slot {
   r: number;
 }
 
+/** 被动计数徽章在画布上的命中区域（悬停 tooltip 用，逻辑坐标）。 */
+interface BadgeRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  badge: StackBadge;
+}
+
 /**
  * Canvas 3v3 对战舞台。
  * - 顶部：先攻顺序条（头像缩略图，当前行动者高亮）。
@@ -120,9 +129,12 @@ export function BattleStage({
   /** 背景图 URL（不传/缺图回退默认渐变）。 */
   background?: string | null;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const slotsRef = useRef<Slot[]>([]);
+  // 被动计数徽章命中区（每帧重建）+ 悬停 tooltip
+  const badgeRectsRef = useRef<BadgeRect[]>([]);
+  const [stageTip, setStageTip] = useState<{ x: number; y: number; text: string } | null>(null);
   // 各角色当前绘制位置（跨渲染保留 → 突进/归位都是平滑缓动）
   const posRef = useRef(new Map<string, { x: number; y: number }>());
   // HP 残影（伤害白条）：每角色一个"幽灵血量"，扣血后缓缓追上真实血量
@@ -142,6 +154,7 @@ export function BattleStage({
       ctx.clearRect(0, 0, W, H);
       drawBackground(ctx, background ?? null, onSpriteReady);
       slotsRef.current = [];
+      badgeRectsRef.current = [];
       posRef.current.clear();
       ghostRef.current.clear();
       ctx.fillStyle = '#5a6680';
@@ -203,6 +216,7 @@ export function BattleStage({
       drawBackground(ctx, background ?? null, onSpriteReady);
       drawInitiativeBar(ctx, state, cur, t.initOrder, onSpriteReady);
       slotsRef.current = [];
+      badgeRectsRef.current = [];
       const sorted = [...fighters].sort(
         (m, n) => Number(lungeKeys.has(keyOf(m.f))) - Number(lungeKeys.has(keyOf(n.f))),
       );
@@ -215,7 +229,7 @@ export function BattleStage({
         const flash = liveFloats.some(
           (fl) => fl.key === k && (fl.kind === 'damage' || fl.kind === 'crit') && now - fl.at < 160,
         );
-        drawFighter(ctx, f, p.x, p.y, team === 'a' ? 'left' : 'right', active, candKeys.has(k), poses?.[k], flash, ghost.get(k) ?? f.hp, now, boostOf[team], onSpriteReady);
+        drawFighter(ctx, f, p.x, p.y, team === 'a' ? 'left' : 'right', active, candKeys.has(k), poses?.[k], flash, ghost.get(k) ?? f.hp, now, boostOf[team], badgeRectsRef.current, onSpriteReady);
       }
       // 跳字最后画（盖在所有角色之上）
       drawFloats(ctx, liveFloats, pos, now);
@@ -273,15 +287,42 @@ export function BattleStage({
     }
   };
 
+  /** 悬停被动计数徽章 → 显示简要说明 tooltip（逻辑坐标 → 渲染时转百分比定位）。 */
+  const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = ((e.clientX - rect.left) / rect.width) * W;
+    const my = ((e.clientY - rect.top) / rect.height) * H;
+    const hit = badgeRectsRef.current.find((b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
+    setStageTip((prev) => {
+      if (!hit) return prev === null ? prev : null;
+      const b = hit.badge;
+      const text = `${b.icon} ${lang === 'en' ? b.labelEn : b.label} ×${b.n} — ${lang === 'en' ? b.descEn : b.desc}`;
+      if (prev && prev.text === text) return prev;
+      return { x: hit.x + hit.w / 2, y: hit.y, text };
+    });
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={W * DPR}
-      height={H * DPR}
-      className="stage"
-      onClick={onClick}
-      style={{ cursor: candidates?.length ? 'pointer' : 'default' }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        width={W * DPR}
+        height={H * DPR}
+        className="stage"
+        onClick={onClick}
+        onMouseMove={onMove}
+        onMouseLeave={() => setStageTip(null)}
+        style={{ cursor: candidates?.length ? 'pointer' : 'default' }}
+      />
+      {stageTip && (
+        <div
+          className="stage-tip"
+          style={{ left: `${(stageTip.x / W) * 100}%`, top: `${(stageTip.y / H) * 100}%` }}
+        >
+          {stageTip.text}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -400,6 +441,7 @@ function drawFighter(
   ghostHp: number,
   now: number,
   boost: number, // 队伍规模放大系数（人少 → 放大）
+  badgeRects: BadgeRect[], // 输出：被动计数徽章的命中区（悬停 tooltip）
   onSpriteReady: () => void,
 ) {
   const size = spriteSize(f.archetypeId) * boost; // 体量归一 × 规模放大后的绘制边长
@@ -510,6 +552,38 @@ function drawFighter(
 
   // HP 条画在上方（带伤害残影白条）
   if (!f.dead) drawHpBar(ctx, cx - 52, topY - 14, f.hp, ghostHp, f.stats.maxHp);
+
+  // 被动计数徽章（Tung 敲击 / Bombom 火药 / Trippi 九命）：跟在 HP 条右侧的小 pill，
+  // 不遮挡血条。1 层只画图标（图标本身 = 1），多层画 "图标×n"。悬停出简要说明（命中区记入 badgeRects）。
+  if (!f.dead) {
+    const badges = stackBadges(f);
+    if (badges.length > 0) {
+      ctx.save();
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'left';
+      let px = cx + 52 + 6; // HP 条右缘（条宽 104、圆心对称）再向右
+      const barMidY = topY - 14 + 5; // HP 条（h=10）的垂直中心
+      for (const b of badges) {
+        const text = b.n > 1 ? `${b.icon}×${b.n}` : b.icon;
+        const tw = ctx.measureText(text).width;
+        const w = tw + 10;
+        const h = 18;
+        const y = barMidY - h / 2;
+        ctx.fillStyle = 'rgba(6,9,16,0.62)';
+        ctx.beginPath();
+        ctx.roundRect(px, y, w, h, 9);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(text, px + 5, barMidY + 4);
+        badgeRects.push({ x: px, y, w, h, badge: b });
+        px += w + 4;
+      }
+      ctx.restore();
+    }
+  }
 }
 
 /** HP 条：圆角 + 渐变填充 + 伤害残影（白条停在旧血量、缓缓追上当前值）。 */

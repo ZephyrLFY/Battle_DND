@@ -78,7 +78,7 @@ const TUNG_STACK_CAP = 3;
 export const PASSIVES: Record<string, Passive> = {
   // 🥖 Tung Tung Tung Sahur ——「不眠的梆子」
   // 普攻/技能命中造成伤害时，先按已叠层数追加等量扁平伤害，再叠 1 层；
-  // 一整回合没有行动则清空层数（连续敲打才积累）。
+  // 一整回合没有行动则清空层数（连续敲打才积累）；释放签名连打后也清空（爆发/叠层二选一）。
   TungSahur: {
     onDealDamage: (ctx, target, _raw, _crit) => {
       const stacks = getStack(ctx.self, 'tung.hits');
@@ -86,15 +86,28 @@ export const PASSIVES: Record<string, Passive> = {
         dealFlatDamage(ctx, target, stacks, '敲击');
         ctx.emit({ t: 'buff', who: ref(ctx.self), note: `敲击 ${stacks} 层追加伤害`, noteEn: `Knock ×${stacks} bonus damage` });
       }
-      // 叠击上限 5：封住中后期"一棒十几点"的滚雪球天花板。
-      if (stacks < TUNG_STACK_CAP) bumpStack(ctx.self, 'tung.hits', 1);
+      // 叠击上限 3：封住中后期"一棒十几点"的滚雪球天花板。
+      if (stacks < TUNG_STACK_CAP) {
+        bumpStack(ctx.self, 'tung.hits', 1);
+        ctx.emit({ t: 'stack', who: ref(ctx.self), key: 'tung.hits', n: stacks + 1 });
+      }
     },
     onTurnStart: (ctx) => {
       // 上一整回合没出手 → 清空敲击层数。__acted 由引擎在行动后置 1、回合开始读后清 0。
       const acted = getStack(ctx.self, ACTED_KEY);
       if (acted === 0 && getStack(ctx.self, 'tung.hits') > 0) {
         clearStack(ctx.self, 'tung.hits');
+        ctx.emit({ t: 'stack', who: ref(ctx.self), key: 'tung.hits', n: 0 });
         ctx.emit({ t: 'buff', who: ref(ctx.self), note: '一回合未出手，敲击层数清空', noteEn: 'Idle for a turn — knock stacks reset' });
+      }
+    },
+    onCastSpell: (ctx, skill) => {
+      // 平衡（轮4）：双榜头部（1v1 ~67% / 3v3 ~58%）。释放签名连打后清空敲击层数——
+      // 连打吃满当前层数没问题，但爆发和持续叠层不能兼得（onCastSpell 在技能结算后触发）。
+      if (skill === 'sig_tung_combo' && getStack(ctx.self, 'tung.hits') > 0) {
+        clearStack(ctx.self, 'tung.hits');
+        ctx.emit({ t: 'stack', who: ref(ctx.self), key: 'tung.hits', n: 0 });
+        ctx.emit({ t: 'buff', who: ref(ctx.self), note: '连打打完梆子脱手，敲击层数清空', noteEn: 'Combo unleashed — knock stacks reset' });
       }
     },
   },
@@ -104,6 +117,7 @@ export const PASSIVES: Record<string, Passive> = {
   BombombiniGusini: {
     onTakeHit: (ctx) => {
       bumpStack(ctx.self, 'bombombini.gunpowder', 1);
+      ctx.emit({ t: 'stack', who: ref(ctx.self), key: 'bombombini.gunpowder', n: getStack(ctx.self, 'bombombini.gunpowder') });
     },
     onDealDamage: (ctx, target, _raw, _crit, fromSpell) => {
       if (!fromSpell) return; // 普攻不吃加成
@@ -115,16 +129,21 @@ export const PASSIVES: Record<string, Passive> = {
     },
     onCastSpell: (ctx) => {
       // 任意耗能技能释放后引爆：清空火药层数（不只签名技能）。
-      if (getStack(ctx.self, 'bombombini.gunpowder') > 0) clearStack(ctx.self, 'bombombini.gunpowder');
+      if (getStack(ctx.self, 'bombombini.gunpowder') > 0) {
+        clearStack(ctx.self, 'bombombini.gunpowder');
+        ctx.emit({ t: 'stack', who: ref(ctx.self), key: 'bombombini.gunpowder', n: 0 });
+      }
     },
   },
 
   // 🐸 Trippi Troppi ——「九命怪猫」
   // 首次将被打至倒地时不倒，改以 15% maxHp 存活并清除负面状态（整场仅一次）。
+  // （轮4 曾试过附加全场眩晕：3v3 64→68% 喂强了本就榜一的控制链，已回滚。）
   TrippiTroppi: {
     onWouldGoDown: (ctx) => {
       if (getStack(ctx.self, 'trippi.ninthUsed') > 0) return false; // 已用过 → 正常倒地
       setStack(ctx.self, 'trippi.ninthUsed', 1);
+      ctx.emit({ t: 'stack', who: ref(ctx.self), key: 'trippi.ninthUsed', n: 1 });
       // 平衡补丁：1 HP → 25% → 15% maxHp（三轮：哈气改为命中即眩晕后，被动让位补偿）
       ctx.self.hp = Math.max(1, Math.floor(ctx.self.stats.maxHp * 0.15));
       ctx.self.stunned = 0;

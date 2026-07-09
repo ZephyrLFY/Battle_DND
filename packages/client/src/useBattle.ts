@@ -243,6 +243,8 @@ export function useBattle(): UseBattle {
       return;
     }
     const tick = () => {
+      // 静默元数据事件（被动计数 stack）：不占节拍，随下一个可见事件一并折叠
+      while (queueRef.current[0]?.t === 'stack') foldOne(queueRef.current.shift()!);
       const ev = queueRef.current.shift();
       if (!ev) {
         tickTimer.current = null; // 清空句柄：否则 enqueue 的 `!tickTimer.current` 守卫永远拦截后续回放

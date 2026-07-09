@@ -130,6 +130,8 @@ export type BattleEvent =
   | { t: 'heal'; who: FighterRef; roll: RollDetail; amount: number; hpLeft: number }
   | { t: 'thorns'; to: FighterRef; roll: RollDetail; dealt: number; hpLeft: number }
   | { t: 'buff'; who: FighterRef; note: string; noteEn?: string }
+  /** 被动计数变化（UI 徽章可视化用；不产生日志行）。n = 变化后的层数。 */
+  | { t: 'stack'; who: FighterRef; key: string; n: number }
   | { t: 'downed'; who: FighterRef }
   | { t: 'revive'; who: FighterRef; hpLeft: number }
   | { t: 'dead'; who: FighterRef }
