@@ -30,7 +30,7 @@ export interface FighterRT {
   hp: number;
   /** 已学技能。 */
   skills: SkillId[];
-  /** 当前能量（从 0 起，普攻命中 +1，放技能消耗，上限 stats.maxEnergy）。 */
+  /** 当前能量（从 0 起，普攻命中 +1，放技能消耗；无硬上限，可以囤过 stats.maxEnergy 基准线）。 */
   energy: number;
 
   // —— 状态 ——

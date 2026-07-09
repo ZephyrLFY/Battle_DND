@@ -55,7 +55,7 @@ export interface DerivedStats {
   dmgBonus: number; // 伤害调整 = STR_mod
   maxHp: number; // (8 + CON_mod) * level，下限每级至少 1
   initiative: number; // 先攻调整 = DEX_mod
-  maxEnergy: number; // 能量上限（从 0 起、普攻 +1、技能消耗）= 3 + floor(level/4)
+  maxEnergy: number; // 能量基准线 = 3 + floor(level/4)。不再是硬上限（可囤过线），仅作 AI 估值递减阈值与 UI 参考
   lifestealRate: number; // 吸血比例（0~0.25）= max(0, CON_mod) * 5%
   strMod: number;
   dexMod: number;

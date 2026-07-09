@@ -93,7 +93,6 @@ export function BuildEditor({
           <span>{t.statHit} +{stats.toHit}</span>
           <span>{t.statDmg} +{stats.dmgBonus}</span>
           <span>{t.statInit} {fmt(stats.initiative)}</span>
-          <span>{t.statEnergyCap} {stats.maxEnergy}</span>
           {stats.lifestealRate > 0 && <span>{t.statLifesteal} {Math.round(stats.lifestealRate * 100)}%</span>}
         </div>
 
